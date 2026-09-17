@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/arthurr0/backvault/tree/main/docs
+    about: Install, configuration, every driver, the API, the CLI and troubleshooting.
+  - name: Troubleshooting
+    url: https://github.com/arthurr0/backvault/blob/main/docs/troubleshooting.md
+    about: Symptoms, causes and fixes for the problems that come up most often.
+  - name: Questions and ideas
+    url: https://github.com/arthurr0/backvault/discussions
+    about: Ask how to do something, or float an idea before it becomes a feature request.
+  - name: Report a vulnerability
+    url: https://github.com/arthurr0/backvault/security/advisories/new
+    about: Security problems are reported privately, never as an issue.

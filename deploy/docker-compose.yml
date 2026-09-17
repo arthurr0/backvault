@@ -1,0 +1,67 @@
+name: backvault
+
+services:
+  backvault:
+    image: ghcr.io/arthurr0/backvault:latest
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      BACKVAULT_BASE_URL: http://localhost:8080
+      BACKVAULT_LOG_LEVEL: info
+      BACKVAULT_LOG_FORMAT: text
+      TZ: UTC
+    volumes:
+      - backvault-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  minio:
+    profiles: ["demo"]
+    image: quay.io/minio/minio:latest
+    restart: unless-stopped
+    command: server /data --address :9000 --console-address :9001
+    environment:
+      MINIO_ROOT_USER: backvault
+      MINIO_ROOT_PASSWORD: backvault-demo-secret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  postgres:
+    profiles: ["demo"]
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: backvault-demo-secret
+      POSTGRES_DB: demo
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  backvault-data:
+  minio-data:
+  postgres-data:

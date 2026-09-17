@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-label="Backvault. Every backup, accounted for.">
+  <title>Backvault. Every backup, accounted for.</title>
+  <rect width="1200" height="630" fill="#0F1720"/>
+  <g transform="translate(516 130) scale(7)">
+    <rect x="1" y="1" width="22" height="22" rx="5.2" fill="#F6F3EC"/>
+    <g fill="#D4A032">
+      <rect x="2.5" y="4.8" width="3" height="5" rx="1.5"/>
+      <rect x="2.5" y="14.2" width="3" height="5" rx="1.5"/>
+    </g>
+    <circle cx="13.2" cy="12" r="7" fill="#0F1720"/>
+    <g fill="#F2C14E">
+      <rect x="8.5" y="11.1" width="9.4" height="1.8" rx="0.9" transform="rotate(45 13.2 12)"/>
+      <rect x="8.5" y="11.1" width="9.4" height="1.8" rx="0.9" transform="rotate(-45 13.2 12)"/>
+      <circle cx="13.2" cy="12" r="2.5"/>
+    </g>
+    <circle cx="13.2" cy="12" r="0.9" fill="#0F1720"/>
+  </g>
+  <text x="600" y="424" fill="#F6F3EC" text-anchor="middle"
+        font-family="Inter, 'Inter var', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="88" font-weight="600" letter-spacing="-0.88">Backvault</text>
+  <rect x="552" y="456" width="96" height="3" rx="1.5" fill="#D4A032"/>
+  <text x="600" y="512" fill="#94A3B8" text-anchor="middle"
+        font-family="Inter, 'Inter var', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="32" font-weight="400" letter-spacing="0.64">Every backup, accounted for.</text>
+</svg>

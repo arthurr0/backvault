@@ -1,0 +1,105 @@
+name: Bug report
+description: Something in Backvault does not work the way it is documented
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please check [the documentation](https://github.com/arthurr0/backvault/tree/main/docs)
+        and the open issues first. Do not report a security problem here, follow
+        [SECURITY.md](https://github.com/arthurr0/backvault/blob/main/SECURITY.md) instead.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened
+      description: What you expected, what happened instead, and how often.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the exact commands, the job configuration and anything else needed to see it.
+      placeholder: |
+        1. Create a job with ...
+        2. Press Run now
+        3. The run fails at the upload stage with ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `backvault version`, or the image tag you are running.
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Install method
+      options:
+        - Container image from ghcr.io
+        - docker compose
+        - Binary from a GitHub release
+        - deploy/install.sh with systemd
+        - Built from source
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: sources
+    attributes:
+      label: Source drivers involved
+      multiple: true
+      options:
+        - postgres
+        - mysql
+        - mongodb
+        - redis
+        - sqlite
+        - files
+        - ssh
+        - docker
+        - command
+        - push
+        - none or not applicable
+    validations:
+      required: true
+  - type: dropdown
+    id: destinations
+    attributes:
+      label: Destination drivers involved
+      multiple: true
+      options:
+        - s3
+        - sftp
+        - webdav
+        - local
+        - none or not applicable
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Host and platform
+      description: Operating system, architecture, and the versions of any external tool involved.
+      placeholder: Debian 12, arm64, pg_dump 18.1
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: >
+        The relevant lines from the run log or the server log. Redact hostnames, bucket names,
+        tokens and passwords.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: check
+    attributes:
+      label: Output of backvault check
+      description: Only if the problem involves an external tool such as pg_dump or mongodump.
+      render: text

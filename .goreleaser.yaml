@@ -1,0 +1,87 @@
+version: 2
+
+project_name: backvault
+
+before:
+  hooks:
+    - go mod download
+    - sh -c "cd web && npm ci && npm run build"
+
+builds:
+  - id: backvault
+    main: ./cmd/backvault
+    binary: backvault
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/arthurr0/backvault/internal/version.Version={{ .Version }}
+      - -X github.com/arthurr0/backvault/internal/version.Commit={{ .ShortCommit }}
+      - -X github.com/arthurr0/backvault/internal/version.BuildDate={{ .Date }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: backvault
+    ids:
+      - backvault
+    formats:
+      - tar.gz
+    name_template: "backvault_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+      - scripts/*
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot"
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - "^Merge branch"
+      - "^Merge pull request"
+      - "^Merge remote-tracking"
+  groups:
+    - title: Features
+      regexp: '^[0-9a-f]*\s*feat(\([^)]*\))?!?:'
+      order: 0
+    - title: Fixes
+      regexp: '^[0-9a-f]*\s*fix(\([^)]*\))?!?:'
+      order: 1
+    - title: Performance
+      regexp: '^[0-9a-f]*\s*perf(\([^)]*\))?!?:'
+      order: 2
+    - title: Documentation
+      regexp: '^[0-9a-f]*\s*docs(\([^)]*\))?!?:'
+      order: 3
+    - title: Build and tooling
+      regexp: '^[0-9a-f]*\s*(build|ci|chore|refactor|test|style)(\([^)]*\))?!?:'
+      order: 4
+    - title: Other
+      order: 99
+
+release:
+  github:
+    owner: arthurr0
+    name: backvault
+  draft: false
+  prerelease: auto
+  name_template: "{{ .Tag }}"
+  footer: |
+    Container image: `ghcr.io/arthurr0/backvault:{{ .Tag }}`
+
+    Verify a download with `sha256sum -c checksums.txt --ignore-missing`.

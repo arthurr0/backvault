@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img" aria-label="Backvault">
+  <title>Backvault</title>
+  <rect x="1" y="1" width="22" height="22" rx="5.2" fill="#0F1720"/>
+  <g fill="#D4A032">
+    <rect x="2.5" y="4.8" width="3" height="5" rx="1.5"/>
+    <rect x="2.5" y="14.2" width="3" height="5" rx="1.5"/>
+  </g>
+  <circle cx="13.2" cy="12" r="7" fill="#F6F3EC"/>
+  <g fill="#D4A032">
+    <rect x="8.5" y="11.1" width="9.4" height="1.8" rx="0.9" transform="rotate(45 13.2 12)"/>
+    <rect x="8.5" y="11.1" width="9.4" height="1.8" rx="0.9" transform="rotate(-45 13.2 12)"/>
+    <circle cx="13.2" cy="12" r="2.5"/>
+  </g>
+  <circle cx="13.2" cy="12" r="0.9" fill="#F6F3EC"/>
+</svg>

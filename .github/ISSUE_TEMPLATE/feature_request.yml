@@ -1,0 +1,63 @@
+name: Feature request
+description: Suggest a capability Backvault does not have yet
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Backvault has a deliberately narrow scope, described in
+        [docs/introduction.md](https://github.com/arthurr0/backvault/blob/main/docs/introduction.md).
+        Requests that fit that scope move much faster than requests that widen it.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do today, and where does Backvault get in the way?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like it to do
+      description: Describe the behaviour, not the implementation, unless the implementation is the point.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Source driver
+        - Destination driver
+        - Scheduling and retention
+        - Packing, compression and encryption
+        - Restore and verify
+        - Notifications
+        - Admin panel
+        - HTTP API
+        - CLI
+        - Standalone scripts
+        - Deployment, image, systemd
+        - Documentation
+    validations:
+      required: true
+  - type: input
+    id: drivers
+    attributes:
+      label: Driver kinds involved
+      description: If this concerns a source or a destination, name the kinds.
+      placeholder: postgres, s3
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you do instead today
+      description: A workaround, another tool, or a script. This helps judge how much the feature is worth.
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I am willing to open a pull request for this
