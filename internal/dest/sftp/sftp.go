@@ -194,7 +194,7 @@ func (c *client) Put(ctx context.Context, p string, r io.Reader, size int64) err
 	if err != nil {
 		return fmt.Errorf("create %s: %w", partial, err)
 	}
-	written, copyErr := io.Copy(f, &ctxReader{ctx: ctx, r: r})
+	written, copyErr := f.ReadFrom(&sizedReader{Reader: &ctxReader{ctx: ctx, r: r}, size: size})
 	closeErr := f.Close()
 	if copyErr != nil {
 		_ = c.sc.Remove(partial)
@@ -377,6 +377,18 @@ func isNotExist(err error) bool {
 type ctxReader struct {
 	ctx context.Context
 	r   io.Reader
+}
+
+type sizedReader struct {
+	io.Reader
+	size int64
+}
+
+func (r *sizedReader) Size() int64 {
+	if r.size <= 0 {
+		return -1
+	}
+	return r.size
 }
 
 func (r *ctxReader) Read(b []byte) (int, error) {

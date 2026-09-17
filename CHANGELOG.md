@@ -4,6 +4,19 @@ All notable changes to Backvault are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-09-18
+
+### Fixed
+
+- SFTP uploads now use concurrent writes. The client hid the artifact size from the sftp
+  library, which fell back to sequential 32 KiB packets and made large uploads to remote
+  hosts such as Hetzner Storage Box take many times longer than the link allowed.
+- Uploads log their progress every 15 seconds (bytes sent, percent, rate, estimated time
+  left) and the completion line reports size, duration and rate, so a long upload no
+  longer looks like a hung run.
+- Standard error output of dump tools such as mongodump and pg_dump is logged at info
+  level unless the line looks like an error; mongodump progress no longer shows as warnings.
+
 ## [0.1.0] - 2026-09-17
 
 First release. Everything below is new.

@@ -145,7 +145,11 @@ func start(ctx context.Context, log *slog.Logger, c Command) (*Process, error) {
 			line = Scrub(line, c.Redact)
 			p.tail.add(line)
 			if !c.Quiet {
-				log.Warn(line, "tool", label)
+				if looksLikeError(line) {
+					log.Warn(line, "tool", label)
+				} else {
+					log.Info(line, "tool", label)
+				}
 			}
 		}
 	}()
@@ -272,4 +276,14 @@ func baseName(p string) string {
 		return p[i+1:]
 	}
 	return p
+}
+
+func looksLikeError(line string) bool {
+	lower := strings.ToLower(line)
+	for _, marker := range []string{"error", "fatal", "failed", "denied", "refused", "cannot", "could not", "warning"} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
 }

@@ -270,9 +270,15 @@ func (e *Engine) uploadOne(ctx context.Context, rs *runState, job core.Job, d co
 			case <-time.After(wait):
 			}
 		}
+		started := time.Now()
 		lastErr = e.putOnce(ctx, d, sp, path, log)
 		if lastErr == nil {
-			log.Info("upload complete", "destination", d.Name, "path", path)
+			elapsed := time.Since(started)
+			rate := int64(0)
+			if secs := elapsed.Seconds(); secs > 0 {
+				rate = int64(float64(sp.PackedBytes) / secs)
+			}
+			log.Info("upload complete", "destination", d.Name, "path", path, "bytes", formatBytes(sp.PackedBytes), "duration", elapsed.Round(time.Second).String(), "rate", formatBytes(rate)+"/s")
 			return nil
 		}
 		if errors.Is(lastErr, context.Canceled) || errors.Is(lastErr, context.DeadlineExceeded) {
@@ -293,11 +299,15 @@ func (e *Engine) putOnce(ctx context.Context, d core.Destination, sp *spool, pat
 		return err
 	}
 	defer f.Close()
-	if err := client.Put(ctx, path, f, sp.PackedBytes); err != nil {
+	log.Info("uploading", "destination", d.Name, "bytes", formatBytes(sp.PackedBytes))
+	progress := newProgressReader(f, sp.PackedBytes, uploadProgressInterval, log, d.Name)
+	if err := client.Put(ctx, path, progress, sp.PackedBytes); err != nil {
 		return fmt.Errorf("upload to %s: %w", d.Name, err)
 	}
 	return nil
 }
+
+const uploadProgressInterval = 15 * time.Second
 
 func (e *Engine) verifyArtifacts(ctx context.Context, rs *runState, destinations []core.Destination, artifacts []core.Artifact) {
 	log := rs.Logger()
