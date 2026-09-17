@@ -23,6 +23,10 @@ updates:
     commit-message:
       prefix: build
       include: scope
+    ignore:
+      - dependency-name: typescript
+        update-types:
+          - version-update:semver-major
     groups:
       web:
         patterns:
