@@ -54,6 +54,27 @@ into it with a single bash script.
   servers from 9.2 through 18, along with the MariaDB client, the MongoDB Database Tools,
   `redis-cli`, `sqlite3`, `age` and the Docker CLI.
 
+## How it compares
+
+Backvault is not another deduplicating archiver. It is the layer above one: the scheduler, the
+dashboard, the restore button and the notification that something failed. It shells out to the
+tools operators already trust (pg_dump, mysqldump, mongodump, tar, ssh, docker) and stores plain,
+inspectable artifacts you can open without Backvault.
+
+| | Backvault | restic / borg | Duplicati / Kopia | pgBackRest / mysqldump in cron |
+|---|---|---|---|---|
+| Databases as first class sources | yes, with native restore | no, files only | no, files only | one database engine each |
+| Remote hosts over SSH and Docker volumes | yes | agent on each host | agent on each host | no |
+| Admin panel with runs, artifacts, live logs | yes | no | yes | no |
+| Push endpoint for hosts you cannot reach | yes, with overdue alerts | no | no | no |
+| Artifact format | plain dump or tar, optional zstd and age | proprietary repository | proprietary repository | plain |
+| Deduplication | no | yes | yes | no |
+| Install | one binary or one container | one binary | service plus UI | packages and scripts |
+
+If you need content-addressed deduplication of terabytes of files, pair Backvault with restic
+through a command source. If you need to know every night that all your databases, servers and
+buckets were backed up and can be restored, Backvault is the tool.
+
 ## Status
 
 Backvault is at 0.1.0, the first public release. The code is complete against the
