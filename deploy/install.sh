@@ -175,7 +175,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-ASSET_REF=main
+ASSET_REF=master
 
 repo_asset() {
   local rel=$1 out
