@@ -35,12 +35,12 @@ race: web-placeholder
 
 lint: web-placeholder
 	go vet ./...
-	gofmt -l cmd internal web/embed.go
+	gofmt -l cmd internal web/embed.go docs/embed.go
 	cd web && npm run typecheck && npm run lint
 	$(MAKE) lint-scripts
 
 fmt:
-	gofmt -w cmd internal web/embed.go
+	gofmt -w cmd internal web/embed.go docs/embed.go
 
 dev-server: web-placeholder
 	go run ./cmd/backvault serve --data-dir ./data

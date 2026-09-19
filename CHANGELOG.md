@@ -4,6 +4,22 @@ All notable changes to Backvault are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-09-19
+
+### Added
+
+- A built-in documentation viewer. The whole `docs/` tree is embedded in the binary and served by
+  the panel at `/docs`, so the documentation always matches the running version and needs no
+  network access.
+- Sidebar entry, the `g h` shortcut and command palette entries for every documentation page.
+- Documentation search across titles, headings and body text, with `Ctrl/Cmd + /` to focus the
+  search box and snippets around the match.
+- Reading layout with per-section navigation, an "On this page" table of contents that follows the
+  scroll position, previous and next links, copyable code blocks with syntax highlighting in both
+  themes, and a "View on GitHub" link for the current page.
+- Public read-only API for the documentation: `GET /api/v1/docs`, `/docs/page`, `/docs/search` and
+  `/docs/assets/{path}`.
+
 ## [0.1.2] - 2026-09-18
 
 ### Fixed

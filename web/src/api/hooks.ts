@@ -13,6 +13,9 @@ import type {
   Config,
   DashboardStats,
   Destination,
+  DocsIndexResponse,
+  DocsPageResponse,
+  DocsSearchResponse,
   DriverSpec,
   ImportResult,
   Job,
@@ -615,5 +618,33 @@ export function useImportConfig() {
     onSuccess: (_result, input) => {
       if (!input.dryRun) void qc.invalidateQueries()
     },
+  })
+}
+
+export function useDocsIndex() {
+  return useQuery({
+    queryKey: qk.docsIndex,
+    queryFn: () => api.get<DocsIndexResponse>('/docs'),
+    staleTime: Infinity,
+  })
+}
+
+export function useDocsPage(path: string | undefined) {
+  return useQuery({
+    queryKey: qk.docsPage(path ?? ''),
+    queryFn: () => api.get<DocsPageResponse>('/docs/page', { query: { path } }),
+    enabled: Boolean(path),
+    staleTime: Infinity,
+    retry: false,
+  })
+}
+
+export function useDocsSearch(query: string) {
+  const trimmed = query.trim()
+  return useQuery({
+    queryKey: qk.docsSearch(trimmed),
+    queryFn: () => api.get<DocsSearchResponse>('/docs/search', { query: { q: trimmed } }).then((res) => res.items),
+    enabled: trimmed.length > 1,
+    staleTime: 60_000,
   })
 }

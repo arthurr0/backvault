@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Outlet, useNavigate } from 'react-router'
-import { X } from 'lucide-react'
+import { LoaderCircle, X } from 'lucide-react'
 import { useEventStream } from '@/api/events'
 import { useLogout } from '@/api/hooks'
 import type { MeResponse } from '@/api/types'
@@ -63,6 +63,7 @@ export function AppLayout({ me }: { me?: MeResponse }) {
         d: '/',
         s: '/sources',
         n: '/notifications',
+        h: '/docs',
       }
       const to = targets[event.key.toLowerCase()]
       if (to) {
@@ -121,7 +122,15 @@ export function AppLayout({ me }: { me?: MeResponse }) {
         />
         <main className={cn('mx-auto w-full max-w-[1400px] flex-1 px-4 py-5 sm:px-6')}>
           <ErrorBoundary>
-            <Outlet />
+            <Suspense
+              fallback={
+                <div className="flex min-h-[50vh] items-center justify-center">
+                  <LoaderCircle className="size-5 animate-spin text-accent" aria-label="Loading" />
+                </div>
+              }
+            >
+              <Outlet />
+            </Suspense>
           </ErrorBoundary>
         </main>
       </div>

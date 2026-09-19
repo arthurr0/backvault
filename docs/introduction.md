@@ -2,6 +2,8 @@
 
 Backvault is a self-hosted backup manager: one binary, one admin panel, every backup accounted for.
 
+![The Backvault dashboard, with stat tiles, the 30 day chart and the recent runs table](images/dashboard.png)
+
 ## The problem
 
 Most backup setups are a collection of cron jobs. Each one works when it is written and

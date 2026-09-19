@@ -50,6 +50,9 @@ into it with a single bash script.
   ntfy, filtered per job and per event.
 - **Operations**: live run logs over SSE, Prometheus metrics, an audit log, API tokens with
   scopes, and YAML export and import of the whole configuration.
+- **Built-in documentation**: the full documentation ships inside the binary and is served by the
+  panel at `/docs`, with search, syntax highlighted commands and an on-page table of contents, so it
+  always matches the version you are running.
 - **Batteries included image**: the container ships a PostgreSQL 18 client, so it dumps
   servers from 9.2 through 18, along with the MariaDB client, the MongoDB Database Tools,
   `redis-cli`, `sqlite3`, `age` and the Docker CLI.

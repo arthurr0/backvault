@@ -27,4 +27,7 @@ export const qk = {
   users: ['users'] as const,
   tokens: ['tokens'] as const,
   audit: (filters?: Record<string, unknown>) => ['audit', filters ?? {}] as const,
+  docsIndex: ['docs'] as const,
+  docsPage: (path: string) => ['docs', 'page', path] as const,
+  docsSearch: (query: string) => ['docs', 'search', query] as const,
 }

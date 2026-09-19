@@ -3,6 +3,10 @@
 Backvault is a self-hosted backup manager: one binary, one admin panel, every backup accounted
 for. This is the full documentation, one topic per page.
 
+The same pages are built into the binary and served by the admin panel at `/docs`, with search,
+an on-page table of contents and copyable commands, so what you read there always matches the
+version you are running.
+
 ## Start here
 
 | Page | What it covers |

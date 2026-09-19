@@ -29,6 +29,11 @@ func (s *Server) buildRouter() chi.Router {
 		r.Post("/setup", s.handleSetup)
 		r.Post("/auth/login", s.handleLogin)
 
+		r.Get("/docs", s.handleDocsIndex)
+		r.Get("/docs/page", s.handleDocsPage)
+		r.Get("/docs/search", s.handleDocsSearch)
+		r.Get("/docs/assets/*", s.handleDocsAsset)
+
 		r.Group(func(r chi.Router) {
 			r.Use(s.mw.RequireAuth)
 			r.Post("/auth/logout", s.handleLogout)

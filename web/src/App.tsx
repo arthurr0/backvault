@@ -1,3 +1,4 @@
+import { lazy } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router'
 import { LoaderCircle } from 'lucide-react'
 import { useMe, useSetupStatus } from '@/api/hooks'
@@ -17,6 +18,8 @@ import { RunsPage } from '@/pages/Runs'
 import { SettingsPage } from '@/pages/Settings'
 import { SetupPage } from '@/pages/Setup'
 import { SourcesPage } from '@/pages/Sources'
+
+const DocsPage = lazy(() => import('@/pages/docs/DocsPage'))
 
 function FullScreenLoader() {
   return (
@@ -65,6 +68,7 @@ export function App() {
         <Route path="destinations" element={<DestinationsPage />} />
         <Route path="destinations/:id/browse" element={<DestinationBrowsePage />} />
         <Route path="notifications" element={<NotificationsPage />} />
+        <Route path="docs/*" element={<DocsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>

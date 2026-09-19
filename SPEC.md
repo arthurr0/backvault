@@ -235,6 +235,8 @@ with proper HTTP status (400 validation, 401 unauthenticated, 403 forbidden, 404
 | GET `/meta/sources` `/meta/destinations` `/meta/notifiers` | any | `{items: DriverSpec[]}` |
 | GET `/meta/tools` | any | `{items: ToolStatus[]}` |
 | GET `/meta/timezones` | any | `{items: string[]}` |
+| GET `/docs`, `/docs/page?path=`, `/docs/search?q=` | none | built-in documentation: catalogue in sidebar order, one page (markdown, headings, prev/next), search over titles, headings and body |
+| GET `/docs/assets/{path}` | none | images under `docs/images`, `Cache-Control: public, max-age=3600` |
 | GET `/dashboard` | read | `DashboardStats` |
 | GET `/events/stream` | read (session or token) | SSE: `event: run.updated` / `job.updated` / `artifact.updated`, `data: <json>`; heartbeat every 20s |
 | GET/POST `/sources`, GET/PUT/DELETE `/sources/{id}` | read / admin | delete refused (409) when jobs reference it |
@@ -313,6 +315,10 @@ Pages and must-have behaviour:
 - **Notifications** (`/notifications`): channels CRUD with dynamic forms, event matrix, test send.
 - **Settings** (`/settings`): General, Users, API tokens (create modal shows secret once with copy),
   Audit log, Tools (availability of pg_dump etc. with hints), About (version, links), Import/Export.
+- **Docs** (`/docs`, `/docs/*`): the embedded `docs/` tree rendered in the panel. Three columns on wide
+  screens (section navigation, article, "On this page"), breadcrumb, search with `Ctrl/Cmd + /`, a
+  "View on GitHub" link, previous and next links, copyable highlighted code blocks, and internal `.md`
+  links rewritten to client-side routes. Loaded as a lazy chunk.
 - Global: toasts, confirm dialogs for destructive actions, empty states with guidance, skeleton loaders,
   error boundaries, 401 → redirect to login, relative timestamps with absolute tooltip, byte formatting,
   duration formatting, keyboard shortcuts (`g j` jobs, `g r` runs, `?` help).

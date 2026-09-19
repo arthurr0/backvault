@@ -5,6 +5,7 @@ import {
   Activity,
   Archive,
   Bell,
+  BookOpen,
   CirclePlay,
   Database,
   HardDrive,
@@ -14,7 +15,8 @@ import {
   Search,
   Settings,
 } from 'lucide-react'
-import { useDestinations, useJobs, useRunJob, useRuns, useSources } from '@/api/hooks'
+import { useDestinations, useDocsIndex, useJobs, useRunJob, useRuns, useSources } from '@/api/hooks'
+import { routeForDoc } from '@/pages/docs/paths'
 import { errorMessage } from '@/api/client'
 import { useToast } from '@/components/ui/Toast'
 import { useCan } from '@/lib/permissions'
@@ -47,6 +49,7 @@ export function CommandPalette({ onClose, initialQuery = '' }: CommandPalettePro
   const sources = useSources()
   const destinations = useDestinations()
   const runs = useRuns({ limit: 8 })
+  const docs = useDocsIndex()
   const runJob = useRunJob()
   const can = useCan()
 
@@ -71,6 +74,7 @@ export function CommandPalette({ onClose, initialQuery = '' }: CommandPalettePro
       { id: 'nav-sources', group: 'Go to', label: 'Sources', icon: <Database className="size-4" />, run: go('/sources') },
       { id: 'nav-destinations', group: 'Go to', label: 'Destinations', icon: <HardDrive className="size-4" />, run: go('/destinations') },
       { id: 'nav-notifications', group: 'Go to', label: 'Notifications', icon: <Bell className="size-4" />, run: go('/notifications') },
+      { id: 'nav-docs', group: 'Go to', label: 'Docs', hint: 'g h', icon: <BookOpen className="size-4" />, run: go('/docs') },
       { id: 'nav-settings', group: 'Go to', label: 'Settings', icon: <Settings className="size-4" />, run: go('/settings') },
     ]
 
@@ -141,8 +145,18 @@ export function CommandPalette({ onClose, initialQuery = '' }: CommandPalettePro
         run: go(`/runs/${run.id}`),
       })
     }
+    for (const doc of docs.data?.items ?? []) {
+      list.push({
+        id: `doc-${doc.path}`,
+        group: 'Docs',
+        label: doc.title,
+        hint: doc.section,
+        icon: <BookOpen className="size-4" />,
+        run: go(routeForDoc(doc.path)),
+      })
+    }
     return list
-  }, [jobs.data, sources.data, destinations.data, runs.data, navigate, onClose, runJob, toast, can])
+  }, [jobs.data, sources.data, destinations.data, runs.data, docs.data, navigate, onClose, runJob, toast, can])
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()

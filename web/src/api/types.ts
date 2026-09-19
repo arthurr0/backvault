@@ -393,3 +393,50 @@ export interface ImportResult {
   changes: ImportPlanEntry[]
   total: number
 }
+
+export interface DocsHeading {
+  level: number
+  text: string
+  id: string
+}
+
+export interface DocsIndexItem {
+  path: string
+  title: string
+  section: string
+  description: string
+  headings: DocsHeading[]
+}
+
+export interface DocsIndexResponse {
+  items: DocsIndexItem[]
+  sections: string[]
+}
+
+export interface DocsLink {
+  path: string
+  title: string
+}
+
+export interface DocsPageResponse {
+  path: string
+  title: string
+  section: string
+  headings: DocsHeading[]
+  markdown: string
+  words: number
+  prev: DocsLink | null
+  next: DocsLink | null
+}
+
+export interface DocsSearchHit {
+  path: string
+  title: string
+  section: string
+  snippet: string
+  score: number
+}
+
+export interface DocsSearchResponse {
+  items: DocsSearchHit[]
+}

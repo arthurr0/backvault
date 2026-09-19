@@ -1,5 +1,5 @@
 import { useRef, useState, type ReactNode } from 'react'
-import { useSearchParams } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import {
   CircleCheck,
   CircleX,
@@ -1022,9 +1022,24 @@ function AboutTab() {
               Prometheus metrics
             </a>
           </li>
-          <li className="text-muted">
-            Documentation lives in the docs directory of the repository, covering every driver, restore
-            and the push API.
+          <li>
+            <Link className="text-accent hover:underline" to="/docs">
+              Documentation
+            </Link>
+            <span className="text-muted">
+              {' '}
+              covers every driver, restore and the push API, and ships inside this build
+            </span>
+          </li>
+          <li>
+            <a
+              className="text-accent hover:underline"
+              href="https://github.com/arthurr0/backvault"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Source on GitHub
+            </a>
           </li>
         </ul>
       </Card>

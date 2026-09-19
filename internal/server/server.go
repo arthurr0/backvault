@@ -12,8 +12,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	docsfs "github.com/arthurr0/backvault/docs"
 	"github.com/arthurr0/backvault/internal/auth"
 	"github.com/arthurr0/backvault/internal/config"
+	"github.com/arthurr0/backvault/internal/docs"
 	"github.com/arthurr0/backvault/internal/engine"
 	"github.com/arthurr0/backvault/internal/secrets"
 	"github.com/arthurr0/backvault/internal/store"
@@ -37,6 +39,7 @@ type Server struct {
 	cfg      config.Config
 	log      *slog.Logger
 	static   fs.FS
+	docs     *docs.Catalogue
 	metrics  *metrics
 	limiter  *auth.RateLimiter
 	proxies  []*net.IPNet
@@ -64,6 +67,11 @@ func New(o Options) (*Server, error) {
 		limiter: auth.NewRateLimiter(5, time.Minute),
 		metrics: newMetrics(o.Store, o.Engine),
 	}
+	catalogue, err := docs.Load(docsfs.FS())
+	if err != nil {
+		return nil, err
+	}
+	s.docs = catalogue
 	s.scriptHashes = inlineScriptHashes(o.StaticFS)
 	s.proxies = parseProxies(o.Config.TrustedProxies, log)
 	s.mw = &auth.Middleware{

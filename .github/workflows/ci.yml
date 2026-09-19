@@ -60,7 +60,7 @@ jobs:
       - name: Check formatting
         run: |
           set -euo pipefail
-          unformatted=$(gofmt -l cmd internal web/embed.go)
+          unformatted=$(gofmt -l cmd internal web/embed.go docs/embed.go)
           if [ -n "$unformatted" ]; then
             echo "$unformatted"
             exit 1

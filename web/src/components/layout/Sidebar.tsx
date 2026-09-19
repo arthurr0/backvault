@@ -3,6 +3,7 @@ import {
   Activity,
   Archive,
   Bell,
+  BookOpen,
   Database,
   HardDrive,
   LayoutDashboard,
@@ -21,6 +22,7 @@ const NAV = [
   { to: '/sources', label: 'Sources', icon: Database, end: false },
   { to: '/destinations', label: 'Destinations', icon: HardDrive, end: false },
   { to: '/notifications', label: 'Notifications', icon: Bell, end: false },
+  { to: '/docs', label: 'Docs', icon: BookOpen, end: false },
   { to: '/settings', label: 'Settings', icon: Settings, end: false },
 ]
 

@@ -1,11 +1,30 @@
 import { useState, type FormEvent } from 'react'
-import { useNavigate, useSearchParams } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import { errorMessage, fieldErrors } from '@/api/client'
 import { useLogin } from '@/api/hooks'
 import { Button } from '@/components/ui/Button'
 import { FieldShell } from '@/components/ui/Field'
 import { Input } from '@/components/ui/Input'
 import { AuthShell } from './AuthShell'
+
+export function AuthLinks() {
+  return (
+    <span className="flex items-center justify-center gap-2">
+      <Link to="/docs" className="hover:text-text">
+        Documentation
+      </Link>
+      <span aria-hidden="true">·</span>
+      <a
+        href="https://github.com/arthurr0/backvault"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="hover:text-text"
+      >
+        GitHub
+      </a>
+    </span>
+  )
+}
 
 export function LoginPage() {
   const [email, setEmail] = useState('')
@@ -27,7 +46,7 @@ export function LoginPage() {
   const errors = fieldErrors(login.error)
 
   return (
-    <AuthShell title="Sign in" description="Every backup, accounted for." footer="Backvault admin panel">
+    <AuthShell title="Sign in" description="Every backup, accounted for." footer={<AuthLinks />}>
       <form className="flex flex-col gap-4" onSubmit={submit}>
         <FieldShell label="Email" htmlFor="login-email" required error={errors.email}>
           <Input

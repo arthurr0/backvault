@@ -7,6 +7,8 @@ const SHORTCUTS: Array<[string, string]> = [
   ['g then a', 'Go to artifacts'],
   ['g then d', 'Go to the dashboard'],
   ['g then s', 'Go to sources'],
+  ['g then h', 'Go to the documentation'],
+  ['⌘ / Ctrl /', 'Search the documentation'],
   ['?', 'Show this help'],
   ['Esc', 'Close a dialog or the palette'],
 ]

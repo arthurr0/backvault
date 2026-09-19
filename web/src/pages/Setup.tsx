@@ -7,6 +7,7 @@ import { FieldShell } from '@/components/ui/Field'
 import { Input } from '@/components/ui/Input'
 import { passphraseStrength } from '@/lib/utils'
 import { AuthShell } from './AuthShell'
+import { AuthLinks } from './Login'
 
 export function SetupPage() {
   const [name, setName] = useState('')
@@ -30,7 +31,12 @@ export function SetupPage() {
     <AuthShell
       title="Create the first administrator"
       description="This account manages jobs, sources, destinations and users."
-      footer="You can add more users later in Settings."
+      footer={
+        <span className="flex flex-col items-center gap-1">
+          <span>You can add more users later in Settings.</span>
+          <AuthLinks />
+        </span>
+      }
     >
       <form className="flex flex-col gap-4" onSubmit={submit}>
         <FieldShell label="Name" htmlFor="setup-name" required error={errors.name}>

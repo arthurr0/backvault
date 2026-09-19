@@ -1,8 +1,13 @@
 import { createServer } from 'node:http'
 import { randomUUID, createHash } from 'node:crypto'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { destinationSpecs, notifierSpecs, sourceSpecs, timezones, tools } from './data.mjs'
+import { loadDocs } from './docs.mjs'
 
 const PORT = Number(process.env.PORT ?? 8080)
+const DOCS_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'docs')
+const docs = loadDocs(DOCS_ROOT)
 const SECRET_MASK = '********'
 const START = new Date()
 
@@ -935,6 +940,31 @@ const server = createServer(async (req, res) => {
     res.writeHead(204)
     res.end()
     return
+  }
+
+  if (path === '/docs' && method === 'GET') return send(res, 200, docs.index())
+
+  if (path === '/docs/page' && method === 'GET') {
+    const requested = (query.get('path') ?? '').trim()
+    if (!requested || requested.includes('..') || !requested.endsWith('.md') || requested.startsWith('/')) {
+      return fail(res, 400, 'validation_failed', 'path must be a documentation page such as sources/postgres.md', {
+        path: 'invalid',
+      })
+    }
+    const found = docs.page(requested)
+    if (!found) return fail(res, 404, 'not_found', `no such documentation page: ${requested}`)
+    return send(res, 200, found)
+  }
+
+  if (path === '/docs/search' && method === 'GET') {
+    return send(res, 200, { items: docs.search(query.get('q') ?? '') })
+  }
+
+  if (path.startsWith('/docs/assets/') && method === 'GET') {
+    const file = docs.asset(path.slice('/docs/assets/'.length))
+    if (!file) return fail(res, 404, 'not_found', 'no such documentation asset')
+    res.writeHead(200, { 'Content-Type': file.type, 'Cache-Control': 'public, max-age=3600' })
+    return res.end(file.body)
   }
 
   const user = sessionUser(req)
