@@ -4,6 +4,14 @@ All notable changes to Backvault are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- `deploy/docker-compose.yml` mounts the host Docker socket and joins the host `docker` group
+  through the `DOCKER_SOCKET` and `DOCKER_GID` variables (see `deploy/.env.example`), so the
+  `docker` source driver works out of the box in compose deployments.
+
 ## [0.2.0] - 2026-09-19
 
 ### Added

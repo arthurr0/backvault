@@ -205,8 +205,9 @@ Safer options, in order of preference:
    that gives false comfort.
 3. Put a socket proxy in front of the daemon that allows only the calls the driver makes.
 
-`deploy/docker-compose.yml` deliberately does not carry the socket mount. Adding it is a
-decision you make, not a default you inherit.
+`deploy/docker-compose.yml` carries the socket mount and the group id, driven by the
+`DOCKER_SOCKET` and `DOCKER_GID` variables described in the compose section. If you do not
+want the `docker` driver at all, remove those two entries from the service.
 
 ## 4. docker compose
 
@@ -217,8 +218,24 @@ docker compose up -d
 docker compose logs -f backvault
 ```
 
-The `backvault` service publishes port 8080, keeps state in the `backvault-data` volume and sets
-`BACKVAULT_BASE_URL=http://localhost:8080`. Change that to the URL you actually use before you
+The `backvault` service publishes port 8080, keeps state in the `backvault-data` volume, mounts
+the host Docker socket for the `docker` source driver and sets
+`BACKVAULT_BASE_URL=http://localhost:8080`. Two variables control the socket, read from a `.env`
+file next to the compose file (copy `.env.example`):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `DOCKER_GID` | `999` | gid of the host's `docker` group, `getent group docker \| cut -d: -f3`; the container joins it so uid 1000 may use the socket |
+| `DOCKER_SOCKET` | `/var/run/docker.sock` | host path of the Docker socket, for example `/run/user/1000/podman/podman.sock` for rootless podman |
+
+```bash
+cp .env.example .env
+sed -i "s/^DOCKER_GID=.*/DOCKER_GID=$(getent group docker | cut -d: -f3)/" .env
+docker compose up -d
+```
+
+If the gid is wrong, jobs using the `docker` source fail with `permission denied while trying to
+connect to the Docker daemon socket`; fix `.env` and run `docker compose up -d` again. Change that to the URL you actually use before you
 put the panel behind a proxy, because the base URL decides whether the session cookie gets
 the `Secure` flag and what links in notifications point at.
 

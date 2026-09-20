@@ -16,6 +16,9 @@ services:
       TZ: UTC
     volumes:
       - backvault-data:/data
+      - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
+    group_add:
+      - "${DOCKER_GID:-999}"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8080/healthz"]
       interval: 30s
