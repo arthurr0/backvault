@@ -172,6 +172,25 @@ docker run -d \
   ghcr.io/arthurr0/backvault:latest
 ```
 
+The image runs as user `backvault` (uid 1000), while the socket on the host is usually owned
+by `root:docker` with mode 660, so the container also needs the host's `docker` group id:
+
+```bash
+docker run -d \
+  --name backvault \
+  -p 8080:8080 \
+  -v backvault-data:/data \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  --group-add "$(stat -c %g /var/run/docker.sock)" \
+  ghcr.io/arthurr0/backvault:latest
+```
+
+In `docker compose` the same thing is `group_add: ["<gid>"]` on the service, where the gid comes
+from `getent group docker | cut -d: -f3`. Without it every `docker` call from a job fails with
+`permission denied while trying to connect to the Docker daemon socket`. Then create a `docker`
+source in the panel with mode `volume` and the volume name; the helper container that reads the
+volume is started on the host daemon, so the volume does not have to be mounted into Backvault.
+
 Understand what this costs before you do it. Access to the Docker socket is equivalent to
 root on the host: anything that can talk to the socket can start a container that mounts the
 host filesystem and writes to it. If Backvault is compromised, or a job runs a command you did

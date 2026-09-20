@@ -91,7 +91,11 @@ docker exec -i shop-db pg_restore --clean --if-exists --username postgres --dbna
 ## Gotchas
 
 **Backvault needs the Docker socket.** In the container image that means mounting
-`/var/run/docker.sock`, which gives Backvault effective root on the host. Decide whether that
+`/var/run/docker.sock`, which gives Backvault effective root on the host.
+Mount the socket with `-v /var/run/docker.sock:/var/run/docker.sock` and add the host's `docker`
+group to the container with `--group-add "$(stat -c %g /var/run/docker.sock)"` (compose:
+`group_add`), because the image runs as uid 1000 and the socket is normally `root:docker` 660.
+See the install page for the full command. Decide whether that
 trade is acceptable before you enable it, and read the note in
 [../security.md](../security.md). Under systemd, add the `docker` group to the unit with
 `SupplementaryGroups=docker`.
