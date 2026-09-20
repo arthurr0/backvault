@@ -34,6 +34,7 @@ type Store struct {
 	Sessions     *SessionRepo
 	Tokens       *TokenRepo
 	Sources      *SourceRepo
+	Hosts        *HostRepo
 	Destinations *DestinationRepo
 	Jobs         *JobRepo
 	Runs         *RunRepo
@@ -84,6 +85,7 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	s.Sessions = &SessionRepo{s: s}
 	s.Tokens = &TokenRepo{s: s}
 	s.Sources = &SourceRepo{s: s}
+	s.Hosts = &HostRepo{s: s}
 	s.Destinations = &DestinationRepo{s: s}
 	s.Jobs = &JobRepo{s: s}
 	s.Runs = &RunRepo{s: s}

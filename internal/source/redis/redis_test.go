@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/arthurr0/backvault/internal/core"
+	"github.com/arthurr0/backvault/internal/source/internal/remoteexec"
 )
 
 func TestValidate(t *testing.T) {
@@ -38,5 +39,23 @@ func TestSpecHasNoRestore(t *testing.T) {
 	spec := New().Spec()
 	if spec.Has(core.CapRestore) {
 		t.Error("redis should not declare a restore capability")
+	}
+}
+
+func TestRemoteSnapshotLine(t *testing.T) {
+	cfg := core.Config{"host": "10.0.0.3", "port": 6380, "password": "hunter2hunter2", "tls": true, "user": "backup"}
+	argv := append([]string{"redis-cli"}, append(connArgs(cfg), "--no-auth-warning", "--rdb", "-")...)
+	cmd := remoteexec.Command{Argv: argv, Env: env(cfg), Redact: redact(cfg)}
+	line := remoteexec.ShellLine(cmd)
+	want := `env REDISCLI_AUTH=hunter2hunter2 redis-cli -h 10.0.0.3 -p 6380 --user backup --tls --no-auth-warning --rdb -`
+	if line != want {
+		t.Errorf("got %q, want %q", line, want)
+	}
+	logged := remoteexec.LogLine(cmd)
+	if strings.Contains(logged, "hunter2hunter2") {
+		t.Errorf("the password leaked into the log line: %s", logged)
+	}
+	if strings.Contains(strings.Join(argv, " "), "hunter2hunter2") {
+		t.Error("the password must never be an argument")
 	}
 }

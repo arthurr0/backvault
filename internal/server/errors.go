@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -121,6 +122,20 @@ func decodeBody(r *http.Request, dst any) error {
 	}
 	dec := json.NewDecoder(http.MaxBytesReader(nil, r.Body, 4<<20))
 	if err := dec.Decode(dst); err != nil {
+		return newValidationError(fmt.Sprintf("invalid JSON body: %v", err))
+	}
+	return nil
+}
+
+func decodeOptionalBody(r *http.Request, dst any) error {
+	if r.Body == nil {
+		return nil
+	}
+	dec := json.NewDecoder(http.MaxBytesReader(nil, r.Body, 4<<20))
+	if err := dec.Decode(dst); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
 		return newValidationError(fmt.Sprintf("invalid JSON body: %v", err))
 	}
 	return nil

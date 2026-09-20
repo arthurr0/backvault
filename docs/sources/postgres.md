@@ -5,7 +5,7 @@ result into the backup pipeline.
 
 Kind `postgres`. Extension `dump` for the custom format, `sql` for plain format and for
 `pg_dumpall`. Requires `pg_dump` (and `pg_dumpall` for cluster dumps) on the Backvault host,
-`pg_restore` and `psql` for restores. Capabilities: test, restore.
+`pg_restore` and `psql` for restores. Capabilities: test, restore, remote.
 
 ## Configuration fields
 
@@ -62,6 +62,24 @@ sources:
 `backvault export` masks `password` as `********`. On import, a field that still carries the
 mask keeps the value already stored, so an exported file can be re-imported without
 handing the password around.
+
+## Run on a host
+
+Pick a host in the **Run on** select and `pg_dump` (or `pg_dumpall`) runs on that machine, so
+`host: localhost` then means the database on the host itself and no port has to be exposed to
+the network. The command is the same one described above, prefixed with the environment:
+
+```
+env PGPASSWORD=... PGSSLMODE=... PGCONNECT_TIMEOUT=15 PGCLIENTENCODING=UTF8 pg_dump ...
+```
+
+The password is passed through the environment, never as an argument, so it does not appear in
+the host's process list. `binary_path` refers to a directory or a binary on the host, which is
+the usual way to select a versioned client such as `/usr/lib/postgresql/18/bin`.
+
+**Test connection** checks that `psql` exists on the host and runs `select 1` through it, and
+falls back to `pg_isready` when only that is installed. Restores run `pg_restore` or `psql`
+on the host with the artifact on standard input.
 
 ## Restore
 

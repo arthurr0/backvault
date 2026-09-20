@@ -153,3 +153,8 @@ export function titleCase(value: string): string {
     )
     .join(' ')
 }
+
+export function hostAddress(host: { user?: string; address: string; port?: number }): string {
+  const port = host.port && host.port !== 22 ? `:${host.port}` : ''
+  return `${host.user || 'root'}@${host.address}${port}`
+}

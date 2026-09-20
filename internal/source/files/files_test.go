@@ -13,6 +13,7 @@ import (
 
 	"github.com/arthurr0/backvault/internal/core"
 	"github.com/arthurr0/backvault/internal/source"
+	"github.com/arthurr0/backvault/internal/source/internal/remoteexec"
 )
 
 func testLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
@@ -369,5 +370,62 @@ func TestTestReportsMissingPaths(t *testing.T) {
 	root := tree(t)
 	if err := New().Test(t.Context(), core.Config{"paths": []string{filepath.Join(root, "site")}}, testLogger()); err != nil {
 		t.Errorf("readable paths should pass: %v", err)
+	}
+}
+
+func TestRemoteTarArgv(t *testing.T) {
+	cfg := core.Config{
+		"paths":           []string{"/srv/my app", "/etc/nginx"},
+		"base_dir":        "/srv",
+		"exclude":         []string{"**/node_modules/**", "*.log"},
+		"one_file_system": true,
+		"follow_symlinks": true,
+	}
+	argv := tarArgv("/usr/bin/tar", cfg)
+	want := []string{
+		"/usr/bin/tar", "-C", "/srv", "-cf", "-", "--one-file-system", "-h",
+		"--exclude=**/node_modules/**", "--exclude=*.log", "my app", "/etc/nginx",
+	}
+	if len(argv) != len(want) {
+		t.Fatalf("got %v", argv)
+	}
+	for i := range want {
+		if argv[i] != want[i] {
+			t.Fatalf("argv[%d] = %q, want %q (%v)", i, argv[i], want[i], argv)
+		}
+	}
+	line := remoteexec.ShellLine(remoteexec.Command{Argv: argv})
+	if line != `/usr/bin/tar -C /srv -cf - --one-file-system -h '--exclude=**/node_modules/**' '--exclude=*.log' 'my app' /etc/nginx` {
+		t.Errorf("shell line %q", line)
+	}
+}
+
+func TestRemoteTarDefaultsToRootBase(t *testing.T) {
+	cfg := core.Config{"paths": []string{"/var/www/html"}}
+	line := remoteexec.ShellLine(remoteexec.Command{Argv: tarArgv("tar", cfg)})
+	if line != "tar -C / -cf - var/www/html" {
+		t.Errorf("shell line %q", line)
+	}
+}
+
+func TestRemoteExtractScript(t *testing.T) {
+	cfg := core.Config{"paths": []string{"/data"}}
+	got := extractScript("tar", "/restore target", cfg)
+	if got != `mkdir -p '/restore target' && tar -C '/restore target' -xf - --no-same-owner` {
+		t.Errorf("got %q", got)
+	}
+	cfg["restore_ownership"] = true
+	got = extractScript("tar", "/restore", cfg)
+	if got != "mkdir -p /restore && tar -C /restore -xf -" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestRemoteReadableScript(t *testing.T) {
+	cfg := core.Config{"paths": []string{"/data/one", "/data/two files"}, "base_dir": "/data"}
+	got := readableScript(cfg)
+	want := `for p in /data/one '/data/two files' /data; do [ -r "$p" ] || echo "$p"; done`
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }

@@ -1,5 +1,5 @@
 import { createServer } from 'node:http'
-import { randomUUID, createHash } from 'node:crypto'
+import { randomUUID, createHash, generateKeyPairSync, randomBytes } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { destinationSpecs, notifierSpecs, sourceSpecs, timezones, tools } from './data.mjs'
@@ -15,6 +15,7 @@ const state = {
   users: [],
   sessions: new Map(),
   tokens: [],
+  hosts: [],
   sources: [],
   destinations: [],
   jobs: [],
@@ -170,10 +171,86 @@ function destinationView(destination) {
 }
 
 function sourceView(source) {
+  const host = state.hosts.find((item) => item.id === source.hostId)
   return {
     ...source,
+    hostId: source.hostId ?? '',
+    hostName: host?.name ?? '',
     config: maskConfig('source', source.kind, source.config),
     jobCount: state.jobs.filter((job) => job.sourceId === source.id).length,
+  }
+}
+
+const HOST_SECRETS = ['privateKey', 'keyPassphrase', 'password']
+const HOST_TOOLS = [
+  'tar',
+  'gzip',
+  'zstd',
+  'rsync',
+  'docker',
+  'pg_dump',
+  'mysqldump',
+  'sqlite3',
+  'redis-cli',
+]
+
+function hostView(host) {
+  const out = { ...host }
+  for (const field of HOST_SECRETS) {
+    if (out[field]) out[field] = SECRET_MASK
+  }
+  out.sourceCount = state.sources.filter((source) => source.hostId === host.id).length
+  return out
+}
+
+function mergeHostSecrets(next, previous) {
+  const out = { ...next }
+  for (const field of HOST_SECRETS) {
+    if (out[field] === SECRET_MASK) out[field] = previous?.[field] ?? ''
+  }
+  return out
+}
+
+function keyPair(comment) {
+  const pair = generateKeyPairSync('ed25519')
+  const raw = pair.publicKey.export({ format: 'der', type: 'spki' }).subarray(-32)
+  const type = Buffer.from('ssh-ed25519')
+  const length = (value) => {
+    const buffer = Buffer.alloc(4)
+    buffer.writeUInt32BE(value)
+    return buffer
+  }
+  const blob = Buffer.concat([length(type.length), type, length(raw.length), raw])
+  const body = Buffer.concat([pair.privateKey.export({ format: 'der', type: 'pkcs8' }), randomBytes(180)])
+    .toString('base64')
+    .replace(/(.{70})/g, '$1\n')
+  return {
+    publicKey: `ssh-ed25519 ${blob.toString('base64')} ${comment}`,
+    privateKey: `-----BEGIN OPENSSH PRIVATE KEY-----\n${body}\n-----END OPENSSH PRIVATE KEY-----\n`,
+  }
+}
+
+function probeHost(host) {
+  const hasCredentials = host.auth === 'password' ? Boolean(host.password) : Boolean(host.privateKey)
+  if (!host.address) {
+    return { ok: false, message: 'An address is required', durationMs: 12 }
+  }
+  if (!hasCredentials) {
+    return {
+      ok: false,
+      message: `ssh: handshake failed: no ${host.auth === 'password' ? 'password' : 'private key'} configured`,
+      durationMs: 38,
+    }
+  }
+  return {
+    ok: true,
+    message: `Connected as ${host.user || 'root'}@${host.address}`,
+    durationMs: 240 + Math.floor(Math.random() * 180),
+    os:
+      host.auth === 'password'
+        ? 'Ubuntu 20.04.6 LTS, Linux 5.4.0-192-generic'
+        : 'Debian GNU/Linux 12 (bookworm), Linux 6.1.0-23-amd64',
+    tools: host.auth === 'password' ? HOST_TOOLS.filter((tool) => tool !== 'docker') : HOST_TOOLS,
   }
 }
 
@@ -377,6 +454,61 @@ function seed() {
   const now = Date.now()
   const day = 24 * 60 * 60 * 1000
 
+  const web01Key = keyPair('backvault@backvault')
+
+  state.hosts = [
+    {
+      id: 'hst_web01',
+      name: 'web01',
+      description: 'Application server in the Falkenstein rack',
+      address: '10.0.0.12',
+      port: 22,
+      user: 'backvault',
+      auth: 'key',
+      privateKey: web01Key.privateKey,
+      keyPassphrase: '',
+      password: '',
+      publicKey: web01Key.publicKey,
+      hostKey: 'SHA256:6b9Xn0mM1hZq4b2Jc7tR0sYv8kLpQwE3dNfGhJiKlMn',
+      sudo: true,
+      connectTimeoutSeconds: 15,
+      tags: ['production', 'web'],
+      createdAt: iso(now - 26 * day),
+      updatedAt: iso(now - 4 * day),
+      lastTestAt: iso(now - 6 * 60 * 60 * 1000),
+      lastTestOk: true,
+      lastTestError: '',
+      lastSeenOs: 'Debian GNU/Linux 12 (bookworm), Linux 6.1.0-23-amd64',
+      tools: ['tar', 'gzip', 'zstd', 'rsync', 'docker', 'pg_dump', 'mysqldump', 'sqlite3'],
+      sourceCount: 0,
+    },
+    {
+      id: 'hst_db02',
+      name: 'db02',
+      description: 'Legacy database box, password login only',
+      address: 'db02.internal',
+      port: 2222,
+      user: 'root',
+      auth: 'password',
+      privateKey: '',
+      keyPassphrase: '',
+      password: 'legacy-secret',
+      publicKey: '',
+      hostKey: '',
+      sudo: false,
+      connectTimeoutSeconds: 20,
+      tags: ['database'],
+      createdAt: iso(now - 11 * day),
+      updatedAt: iso(now - 11 * day),
+      lastTestAt: iso(now - 2 * day),
+      lastTestOk: false,
+      lastTestError: 'ssh: handshake failed: ssh: unable to authenticate, attempted methods [none password]',
+      lastSeenOs: '',
+      tools: [],
+      sourceCount: 0,
+    },
+  ]
+
   state.sources = [
     {
       id: 'src_pg',
@@ -405,6 +537,7 @@ function seed() {
       kind: 'files',
       description: 'User uploaded media on web01',
       config: { paths: ['/var/www/app/storage/uploads'], exclude: ['*.tmp', 'cache/*'], one_file_system: true },
+      hostId: 'hst_web01',
       tags: ['production'],
       createdAt: iso(now - 30 * day),
       updatedAt: iso(now - 30 * day),
@@ -425,6 +558,20 @@ function seed() {
       lastTestOk: false,
       lastTestError: 'dial tcp 10.0.0.14:3306: connect: connection refused',
       jobCount: 1,
+    },
+    {
+      id: 'src_docker',
+      name: 'App Docker volume',
+      kind: 'docker',
+      description: 'Uploads volume of the app container on web01',
+      config: { mode: 'volume', volume: 'app_data', helper_image: 'alpine:3' },
+      hostId: 'hst_web01',
+      tags: ['production'],
+      createdAt: iso(now - 16 * day),
+      updatedAt: iso(now - 16 * day),
+      lastTestAt: iso(now - 4 * day),
+      lastTestOk: true,
+      jobCount: 0,
     },
     {
       id: 'src_push',
@@ -862,6 +1009,42 @@ function dashboard() {
   }
 }
 
+function hostBody(body) {
+  return {
+    id: body.id ?? '',
+    name: String(body.name ?? '').trim(),
+    description: String(body.description ?? ''),
+    address: String(body.address ?? '').trim(),
+    port: Number(body.port) || 22,
+    user: String(body.user ?? '').trim(),
+    auth: body.auth === 'password' ? 'password' : 'key',
+    privateKey: body.privateKey ?? '',
+    keyPassphrase: body.keyPassphrase ?? '',
+    password: body.password ?? '',
+    publicKey: body.publicKey ?? '',
+    hostKey: String(body.hostKey ?? '').trim(),
+    sudo: body.sudo === true,
+    connectTimeoutSeconds: Number(body.connectTimeoutSeconds) || 15,
+    tags: body.tags ?? [],
+  }
+}
+
+function hostErrors(host) {
+  const fields = {}
+  if (!host.name) fields.name = 'A name is required'
+  if (!host.address) fields.address = 'An address is required'
+  if (!host.user) fields.user = 'A user is required'
+  if (host.port < 1 || host.port > 65535) fields.port = 'Must be between 1 and 65535'
+  if (host.auth === 'key' && !host.privateKey) fields.privateKey = 'Generate or paste a private key'
+  if (host.auth === 'password' && !host.password) fields.password = 'A password is required'
+  return Object.keys(fields).length ? fields : null
+}
+
+function sourceWhere(hostId) {
+  const host = state.hosts.find((item) => item.id === hostId)
+  return host ? `on ${host.name}` : 'on the Backvault server'
+}
+
 function send(res, status, body, headers = {}) {
   const payload = typeof body === 'string' ? body : JSON.stringify(body)
   res.writeHead(status, {
@@ -1082,9 +1265,92 @@ const server = createServer(async (req, res) => {
     return undefined
   }
 
+  if (segments[0] === 'hosts') {
+    if (segments.length === 1 && method === 'GET') {
+      const needle = (query.get('q') ?? '').toLowerCase()
+      const tag = query.get('tag') ?? ''
+      let items = state.hosts.map(hostView)
+      if (needle) {
+        items = items.filter((host) =>
+          `${host.name} ${host.address} ${host.user} ${host.description}`.toLowerCase().includes(needle),
+        )
+      }
+      if (tag) items = items.filter((host) => (host.tags ?? []).includes(tag))
+      return send(res, 200, list(items, query))
+    }
+    if (segments[1] === 'keygen' && method === 'POST') {
+      return send(res, 200, keyPair('backvault@backvault'))
+    }
+    if (segments[1] === 'test' && method === 'POST') {
+      const stored = state.hosts.find((item) => item.id === body.id)
+      return send(res, 200, probeHost(mergeHostSecrets(hostBody(body), stored)))
+    }
+    if (segments.length === 1 && method === 'POST') {
+      const invalid = hostErrors(hostBody(body))
+      if (invalid) return fail(res, 400, 'validation_failed', 'Check the highlighted fields', invalid)
+      const created = {
+        ...hostBody(body),
+        id: id('hst'),
+        createdAt: iso(Date.now()),
+        updatedAt: iso(Date.now()),
+        lastTestError: '',
+        lastSeenOs: '',
+        tools: [],
+        sourceCount: 0,
+      }
+      state.hosts.push(created)
+      audit('host.create', 'host', created.id, created.name)
+      return send(res, 201, hostView(created))
+    }
+    const host = state.hosts.find((item) => item.id === segments[1])
+    if (!host) return fail(res, 404, 'not_found', 'Host not found')
+    if (segments[2] === 'test' && method === 'POST') {
+      const result = probeHost(host)
+      host.lastTestAt = iso(Date.now())
+      host.lastTestOk = result.ok
+      host.lastTestError = result.ok ? '' : result.message
+      if (result.ok) {
+        host.lastSeenOs = result.os
+        host.tools = result.tools
+      }
+      return send(res, 200, result)
+    }
+    if (segments[2] === 'keygen' && method === 'POST') {
+      const pair = keyPair(`backvault@${host.name}`)
+      host.auth = 'key'
+      host.privateKey = pair.privateKey
+      host.publicKey = pair.publicKey
+      host.updatedAt = iso(Date.now())
+      audit('host.keygen', 'host', host.id, host.name)
+      return send(res, 200, hostView(host))
+    }
+    if (method === 'GET') return send(res, 200, hostView(host))
+    if (method === 'PUT') {
+      const next = mergeHostSecrets(hostBody(body), host)
+      const invalid = hostErrors(next)
+      if (invalid) return fail(res, 400, 'validation_failed', 'Check the highlighted fields', invalid)
+      Object.assign(host, next, { id: host.id, updatedAt: iso(Date.now()) })
+      audit('host.update', 'host', host.id, host.name)
+      return send(res, 200, hostView(host))
+    }
+    if (method === 'DELETE') {
+      const used = state.sources.filter((source) => source.hostId === host.id)
+      if (used.length) {
+        return fail(res, 409, 'conflict', `${used.length} sources still run on this host`)
+      }
+      state.hosts = state.hosts.filter((item) => item.id !== host.id)
+      audit('host.delete', 'host', host.id, host.name)
+      return send(res, 204, '')
+    }
+  }
+
   if (segments[0] === 'sources') {
     if (segments.length === 1 && method === 'GET') {
-      return send(res, 200, list(state.sources.map(sourceView), query))
+      const host = query.get('host')
+      const items = state.sources
+        .filter((source) => (host === null ? true : (source.hostId ?? '') === host))
+        .map(sourceView)
+      return send(res, 200, list(items, query))
     }
     if (segments.length === 1 && method === 'POST') {
       const created = {
@@ -1093,6 +1359,7 @@ const server = createServer(async (req, res) => {
         kind: body.kind,
         description: body.description ?? '',
         config: body.config ?? {},
+        hostId: body.hostId ?? '',
         tags: body.tags ?? [],
         createdAt: iso(Date.now()),
         updatedAt: iso(Date.now()),
@@ -1103,7 +1370,11 @@ const server = createServer(async (req, res) => {
       return send(res, 201, sourceView(created))
     }
     if (segments[1] === 'test' && method === 'POST') {
-      return send(res, 200, { ok: true, message: `Connected to ${body.kind} in the mock backend`, durationMs: 148 })
+      return send(res, 200, {
+        ok: true,
+        message: `Connected to ${body.kind} ${sourceWhere(body.hostId)}`,
+        durationMs: 148,
+      })
     }
     const source = state.sources.find((item) => item.id === segments[1])
     if (!source) return fail(res, 404, 'not_found', 'Source not found')
@@ -1111,7 +1382,11 @@ const server = createServer(async (req, res) => {
       source.lastTestAt = iso(Date.now())
       source.lastTestOk = true
       source.lastTestError = ''
-      return send(res, 200, { ok: true, message: 'Connection succeeded', durationMs: 212 })
+      return send(res, 200, {
+        ok: true,
+        message: `Connection succeeded ${sourceWhere(body.hostId ?? source.hostId)}`,
+        durationMs: 212,
+      })
     }
     if (method === 'GET') return send(res, 200, sourceView(source))
     if (method === 'PUT') {
@@ -1119,6 +1394,7 @@ const server = createServer(async (req, res) => {
       source.description = body.description ?? ''
       source.tags = body.tags ?? []
       source.config = mergeSecrets('source', source.kind, body.config ?? {}, source.config)
+      source.hostId = body.hostId ?? ''
       source.updatedAt = iso(Date.now())
       audit('source.update', 'source', source.id, source.name)
       return send(res, 200, sourceView(source))

@@ -9,7 +9,7 @@ import (
 
 	"github.com/arthurr0/backvault/internal/core"
 	"github.com/arthurr0/backvault/internal/source"
-	"github.com/arthurr0/backvault/internal/source/internal/procstream"
+	"github.com/arthurr0/backvault/internal/source/internal/remoteexec"
 )
 
 type Driver struct{}
@@ -26,7 +26,7 @@ func (d *Driver) Spec() core.DriverSpec {
 		Icon:         "database",
 		Category:     "Database",
 		Tools:        []string{"redis-cli"},
-		Capabilities: []string{core.CapTest},
+		Capabilities: []string{core.CapTest, core.CapRemote},
 		Fields: []core.Field{
 			{
 				Name: "host", Label: "Host", Type: core.FieldString, Required: true,
@@ -73,13 +73,18 @@ func (d *Driver) Validate(cfg core.Config) error {
 }
 
 func (d *Driver) Test(ctx context.Context, cfg core.Config, log *slog.Logger) error {
-	bin, err := procstream.Lookup(cfg.String("binary_path"), "redis-cli")
+	r, err := remoteexec.Open(ctx, cfg, log)
 	if err != nil {
 		return err
 	}
-	out, err := procstream.Output(ctx, log, procstream.Command{
-		Name: bin, Args: append(connArgs(cfg), "PING"), Env: env(cfg),
-		Redact: redact(cfg), Label: "redis-cli", Quiet: true,
+	defer r.Close()
+	bin, err := r.Tool(ctx, cfg.String("binary_path"), "redis-cli")
+	if err != nil {
+		return err
+	}
+	out, err := r.Output(ctx, remoteexec.Command{
+		Argv: append([]string{bin}, append(connArgs(cfg), "--no-auth-warning", "PING")...),
+		Env:  env(cfg), Redact: redact(cfg), Label: "redis-cli", Quiet: true,
 	})
 	if err != nil {
 		return err
@@ -87,6 +92,7 @@ func (d *Driver) Test(ctx context.Context, cfg core.Config, log *slog.Logger) er
 	if !bytes.Contains(bytes.ToUpper(out), []byte("PONG")) {
 		return fmt.Errorf("unexpected reply to PING: %q", bytes.TrimSpace(out))
 	}
+	log.Info("redis reachable", "host", cfg.String("host"), "where", where(r))
 	return nil
 }
 
@@ -94,23 +100,36 @@ func (d *Driver) Backup(ctx context.Context, cfg core.Config, log *slog.Logger) 
 	if err := d.Validate(cfg); err != nil {
 		return nil, err
 	}
-	bin, err := procstream.Lookup(cfg.String("binary_path"), "redis-cli")
+	r, err := remoteexec.Open(ctx, cfg, log)
 	if err != nil {
 		return nil, err
 	}
-	args := append(connArgs(cfg), "--no-auth-warning", "--rdb", "-")
-	log.Info("pulling redis rdb snapshot", "host", cfg.String("host"), "port", cfg.Int("port", 6379))
-	p, err := procstream.Start(ctx, log, procstream.Command{
-		Name: bin, Args: args, Env: env(cfg), Redact: redact(cfg), Label: "redis-cli",
+	bin, err := r.Tool(ctx, cfg.String("binary_path"), "redis-cli")
+	if err != nil {
+		r.Close()
+		return nil, err
+	}
+	argv := append([]string{bin}, append(connArgs(cfg), "--no-auth-warning", "--rdb", "-")...)
+	log.Info("pulling redis rdb snapshot", "host", cfg.String("host"), "port", cfg.Int("port", 6379), "where", where(r))
+	reader, err := r.Start(ctx, remoteexec.Command{
+		Argv: argv, Env: env(cfg), Redact: redact(cfg), Label: "redis-cli",
 	})
 	if err != nil {
+		r.Close()
 		return nil, err
 	}
 	return &source.Stream{
-		Reader:    p,
+		Reader:    reader,
 		Extension: "rdb",
 		Meta:      map[string]string{"host": cfg.String("host")},
 	}, nil
+}
+
+func where(r *remoteexec.Runner) string {
+	if r.Remote() {
+		return "host " + r.HostLabel()
+	}
+	return "this server"
 }
 
 func connArgs(cfg core.Config) []string {

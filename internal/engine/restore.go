@@ -233,7 +233,7 @@ func (e *Engine) restoreToSource(ctx context.Context, r io.Reader, req RestoreRe
 	if artifact.SourceKind != "" && src.Kind != artifact.SourceKind {
 		return fmt.Errorf("source kind mismatch: artifact was created by %s, target source is %s", artifact.SourceKind, src.Kind)
 	}
-	driver, cfg, err := e.SourceConfig(src)
+	driver, cfg, err := e.SourceRuntime(ctx, src)
 	if err != nil {
 		return err
 	}

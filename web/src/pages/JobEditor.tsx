@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
-import { ArrowLeft, Lock, Save, TriangleAlert } from 'lucide-react'
+import { ArrowLeft, Lock, Save, Server, TriangleAlert } from 'lucide-react'
 import { errorMessage, fieldErrors } from '@/api/client'
 import {
   useChannels,
@@ -390,6 +390,12 @@ function JobForm({ job, defaultTimezone }: { job: Job | null; defaultTimezone: s
                   <p className="mt-0.5 text-xs text-muted">
                     {titleCase(selectedSource.kind)}
                     {selectedSource.description ? ` · ${selectedSource.description}` : ''}
+                  </p>
+                  <p className="mt-1.5 inline-flex items-center gap-1.5 text-xs text-muted">
+                    <Server className="size-3.5 shrink-0 text-soft" aria-hidden="true" />
+                    {selectedSource.hostId
+                      ? `Runs on ${selectedSource.hostName || 'a remote host'}`
+                      : 'Runs on this server'}
                   </p>
                 </div>
               ) : null}

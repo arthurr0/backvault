@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
-import { Database, PencilLine, Plug, Plus, Trash, TriangleAlert } from 'lucide-react'
+import { Database, PencilLine, Plug, Plus, Server, Trash, TriangleAlert } from 'lucide-react'
 import { errorMessage } from '@/api/client'
 import { useDeleteSource, useJobs, useSourceSpecs, useSources, useTestSource } from '@/api/hooks'
 import { DriverResourceDialog } from '@/components/DriverResourceDialog'
@@ -136,6 +136,12 @@ export function SourcesPage() {
                   <div className="min-w-0 flex-1">
                     <h3 className="truncate text-sm font-semibold text-text">{source.name}</h3>
                     <p className="text-xs text-muted">{spec?.label ?? source.kind}</p>
+                    {source.hostId ? (
+                      <p className="mt-1 inline-flex max-w-full items-center gap-1 rounded bg-surface-3 px-1.5 py-0.5 text-[11px] text-muted">
+                        <Server className="size-3 shrink-0" aria-hidden="true" />
+                        <span className="truncate">{source.hostName || 'Remote host'}</span>
+                      </p>
+                    ) : null}
                   </div>
                   {source.lastTestOk === undefined ? null : (
                     <StatusPill status={source.lastTestOk ? 'ok' : 'failed'} size="sm" />
@@ -196,7 +202,12 @@ export function SourcesPage() {
                       loading={test.isPending && test.variables?.id === source.id}
                       onClick={() =>
                         test.mutate(
-                          { id: source.id, kind: source.kind, config: source.config },
+                          {
+                            id: source.id,
+                            kind: source.kind,
+                            config: source.config,
+                            hostId: source.hostId,
+                          },
                           {
                             onSuccess: (result) =>
                               result.ok

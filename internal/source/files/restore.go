@@ -17,6 +17,9 @@ import (
 )
 
 func (d *Driver) Restore(ctx context.Context, cfg core.Config, r io.Reader, opts source.RestoreOptions, log *slog.Logger) error {
+	if cfg.Host() != nil {
+		return d.restoreRemote(ctx, cfg, r, opts, log)
+	}
 	root := opts.TargetPath
 	if root == "" {
 		root = cfg.String("base_dir")

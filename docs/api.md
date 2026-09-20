@@ -478,8 +478,8 @@ driver's field list.
 
 ### GET /sources
 
-Scope `read`. Query: `kind`, `q` (name substring), `limit`, `offset`. Returns the list envelope of
-`Source` objects.
+Scope `read`. Query: `kind`, `q` (name substring), `host` (host id), `limit`, `offset`. Returns the
+list envelope of `Source` objects.
 
 ```json
 {
@@ -493,6 +493,7 @@ Scope `read`. Query: `kind`, `q` (name substring), `limit`, `offset`. Returns th
       "tags": ["production"],
       "createdAt": "2026-01-04T09:12:00Z",
       "updatedAt": "2026-03-02T11:40:00Z",
+      "hostId": "",
       "lastTestAt": "2026-03-02T11:40:05Z",
       "lastTestOk": true,
       "jobCount": 2
@@ -503,13 +504,21 @@ Scope `read`. Query: `kind`, `q` (name substring), `limit`, `offset`. Returns th
 ```
 
 `lastTestError` is present only when the last test failed, and `lastTestOk` is then `false`.
+`hostId` is empty when the source runs on the Backvault server; when it points at a
+[host](hosts.md) the list also carries `hostName`.
 
 ### POST /sources
 
-Scope `admin`. Body: `name`, `kind`, `config`, optional `description` and `tags`. `name` and `kind`
-are required, and an unknown `kind` is a `400` with `fields: {"kind": "unknown"}`. The config is
-validated against the driver spec, and a missing required field comes back as
+Scope `admin`. Body: `name`, `kind`, `config`, optional `description`, `tags` and `hostId`. `name`
+and `kind` are required, and an unknown `kind` is a `400` with `fields: {"kind": "unknown"}`. The
+config is validated against the driver spec, and a missing required field comes back as
 `fields: {"config": "missing required fields: ..."}`.
+
+`hostId` makes the driver run on an SSH [host](hosts.md) instead of the Backvault server. It is
+only accepted for drivers whose capabilities include `remote`; anything else is a `400` with
+`fields: {"hostId": "this driver cannot run on a host"}`, and an id that no host answers to is a
+`400` with `fields: {"hostId": "host does not exist"}`. Fields marked `localOnly` in the driver
+spec are ignored while a host is set.
 
 ```bash
 curl -sS -X POST https://backvault.example.com/api/v1/sources \
@@ -563,6 +572,133 @@ answers to, which comes back as `fields: {"kind": "unknown"}`. Status: 200, 400,
 Scope `admin`. Same response shape, but it tests the stored configuration, takes no body, and
 records the outcome in `lastTestAt`, `lastTestOk` and `lastTestError`. Audited as `source.test`.
 Status: 200, 401, 403, 404.
+
+## Hosts
+
+A host is a reusable SSH connection that sources can run on. See [hosts.md](hosts.md) for what runs
+where and how to set one up.
+
+### GET /hosts
+
+Scope `read`. Query: `q` (name, description or address substring), `tag`, `limit`, `offset`. Returns
+the list envelope of `Host` objects with their secrets masked.
+
+```json
+{
+  "items": [
+    {
+      "id": "01JHST0000000000000000001",
+      "name": "edge-01",
+      "description": "",
+      "address": "10.0.0.12",
+      "port": 22,
+      "user": "backup",
+      "auth": "key",
+      "privateKey": "********",
+      "keyPassphrase": "",
+      "password": "",
+      "publicKey": "ssh-ed25519 AAAAC3Nz... backvault@backvault",
+      "hostKey": "SHA256:abc...",
+      "sudo": false,
+      "connectTimeoutSeconds": 15,
+      "tags": ["production"],
+      "createdAt": "2026-09-20T14:06:35Z",
+      "updatedAt": "2026-09-20T14:16:52Z",
+      "lastTestAt": "2026-09-20T14:17:40Z",
+      "lastTestOk": true,
+      "lastSeenOs": "Linux 6.8.0-40-generic x86_64",
+      "tools": ["tar", "sqlite3", "gzip", "sudo"],
+      "sourceCount": 4
+    }
+  ],
+  "total": 1
+}
+```
+
+`publicKey` is derived from the stored private key and is safe to copy into `authorized_keys`.
+`tools` lists the names from the known tool list that the last test found on the host, and
+`sourceCount` is how many sources run there.
+
+### POST /hosts
+
+Scope `admin`. Body: `name`, `address`, `user`, optional `description`, `port` (default 22), `auth`
+(`key`, the default, or `password`), `privateKey`, `keyPassphrase`, `password`, `publicKey`,
+`hostKey`, `sudo`, `connectTimeoutSeconds` and `tags`.
+
+```bash
+curl -sS -X POST https://backvault.example.com/api/v1/hosts \
+  -H "Authorization: Bearer $BACKVAULT_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+        "name": "edge-01",
+        "address": "10.0.0.12",
+        "user": "backup",
+        "auth": "key",
+        "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----\n...",
+        "hostKey": "SHA256:abc..."
+      }'
+```
+
+Validation is per field: `name`, `address` and `user` are required, `port` must be between 1 and
+65535, key authentication needs a `privateKey` that parses (an encrypted key without its passphrase
+comes back as `fields: {"privateKey": "the private key is encrypted, set the key passphrase"}`),
+password authentication needs a `password`, and a `hostKey` that does not start with `SHA256:` is
+`fields: {"hostKey": "must look like SHA256:abc..."}`. The response is the stored host with its
+secrets masked. Status: 201, 400, 401, 403, 409.
+
+### GET /hosts/{id}
+
+Scope `read`. `{id}` is the ULID. Status: 200, 401, 403, 404.
+
+### PUT /hosts/{id}
+
+Scope `admin`. Full replacement of the mutable fields. `privateKey`, `keyPassphrase` and `password`
+sent back as `********` keep their stored value, so a form can round-trip a host without ever seeing
+its secrets. Status: 200, 400, 401, 403, 404, 409.
+
+### DELETE /hosts/{id}
+
+Scope `admin`. Refused with `409`, code `conflict` and the message `host is used by sources` while
+any source references it. Repoint or delete those sources first. Nothing on the host itself is
+changed. Status: 204, 401, 403, 404, 409.
+
+### POST /hosts/test
+
+Scope `admin`. Tests a host that has not been saved yet, which is what the "Test connection" button
+in the host form calls. The body is a host object; when it carries the `id` of a stored host, masked
+secrets are filled in from that host, so the button works without resending the key.
+
+```json
+{"ok": true, "message": "connection successful", "os": "Linux 6.8.0-40-generic x86_64", "tools": ["tar", "sqlite3", "gzip", "sudo"], "durationMs": 71}
+```
+
+A failed connection is still `200` with `ok: false` and the reason in `message`, for example
+`ssh connect to 10.0.0.12:22: ssh: handshake failed: host key mismatch for 10.0.0.12:22: expected
+SHA256:aaa..., got SHA256:bbb...`. Status: 200, 400, 401, 403.
+
+### POST /hosts/{id}/test
+
+Scope `admin`. Same response shape, takes no body, and records the outcome in `lastTestAt`,
+`lastTestOk`, `lastTestError`, `lastSeenOs` and `tools`. Audited as `host.test`. Status: 200, 401,
+403, 404.
+
+### POST /hosts/keygen
+
+Scope `admin`. Generates an ed25519 key pair for a host that does not exist yet and returns it
+without storing anything. The comment is `backvault@<site name>`.
+
+```json
+{"privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----\n...", "publicKey": "ssh-ed25519 AAAAC3Nz... backvault@backvault"}
+```
+
+Status: 200, 401, 403.
+
+### POST /hosts/{id}/keygen
+
+Scope `admin`. Generates a new key pair, stores the private half on the host, switches `auth` to
+`key`, clears the key passphrase and returns the host with its new `publicKey`. The old key stops
+working as soon as this returns, so add the new public key to `authorized_keys` before the next run.
+Audited as `host.keygen`. Status: 200, 401, 403, 404.
 
 ## Destinations
 

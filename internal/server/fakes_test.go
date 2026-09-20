@@ -18,6 +18,7 @@ import (
 
 func init() {
 	source.Register(&testSource{})
+	source.Register(&testRemoteSource{})
 	dest.Register(&testDestination{})
 	notify.Register(&testNotifier{})
 }
@@ -169,4 +170,38 @@ func (t *testNotifier) Validate(core.Config) error { return nil }
 
 func (t *testNotifier) Send(ctx context.Context, cfg core.Config, ev notify.Event, log *slog.Logger) error {
 	return nil
+}
+
+type testRemoteSource struct{}
+
+func (t *testRemoteSource) Spec() core.DriverSpec {
+	return core.DriverSpec{
+		Kind:     "testremote",
+		Label:    "Test remote source",
+		Category: "test",
+		Fields: []core.Field{
+			{Name: "command", Label: "Command", Type: core.FieldString, Required: true},
+			{Name: "ssh_password", Label: "SSH password", Type: core.FieldSecret, Secret: true, LocalOnly: true},
+		},
+		Capabilities: []string{core.CapTest, core.CapRemote},
+	}
+}
+
+func (t *testRemoteSource) Validate(cfg core.Config) error {
+	if cfg.String("command") == "" {
+		return errors.New("command is required")
+	}
+	return nil
+}
+
+func (t *testRemoteSource) Test(ctx context.Context, cfg core.Config, log *slog.Logger) error {
+	if cfg.Host() == nil && cfg.Bool("require_host", false) {
+		return errors.New("no host attached")
+	}
+	return nil
+}
+
+func (t *testRemoteSource) Backup(ctx context.Context, cfg core.Config, log *slog.Logger) (*source.Stream, error) {
+	payload := cfg.StringOr("command", "data")
+	return &source.Stream{Reader: readCloser{bytes.NewReader([]byte(payload))}, Extension: "dump", Size: int64(len(payload))}, nil
 }

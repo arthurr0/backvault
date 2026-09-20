@@ -62,6 +62,7 @@ export function AppLayout({ me }: { me?: MeResponse }) {
         a: '/artifacts',
         d: '/',
         s: '/sources',
+        o: '/hosts',
         n: '/notifications',
         h: '/docs',
       }

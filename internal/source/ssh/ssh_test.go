@@ -61,3 +61,42 @@ func TestScrubRemovesSecrets(t *testing.T) {
 		t.Errorf("secret leaked: %v", err)
 	}
 }
+
+func TestConnectionFieldsAreLocalOnly(t *testing.T) {
+	want := map[string]bool{
+		"host": true, "port": true, "user": true, "auth": true, "password": true,
+		"private_key": true, "key_passphrase": true, "host_key": true, "connect_timeout": true,
+	}
+	seen := map[string]bool{}
+	for _, f := range New().Spec().Fields {
+		if f.LocalOnly {
+			seen[f.Name] = true
+		}
+		if want[f.Name] && !f.LocalOnly {
+			t.Errorf("field %s should be local only", f.Name)
+		}
+	}
+	for name := range want {
+		if !seen[name] {
+			t.Errorf("field %s is missing from the spec", name)
+		}
+	}
+	caps := strings.Join(New().Spec().Capabilities, " ")
+	if !strings.Contains(caps, core.CapRemote) {
+		t.Errorf("the driver should declare %s: %s", core.CapRemote, caps)
+	}
+}
+
+func TestValidateOnAHostIgnoresTheConnectionFields(t *testing.T) {
+	d := New()
+	cfg := core.Config{"command": "tar -C /data -cf - ."}
+	if err := d.Validate(cfg); err == nil {
+		t.Error("without a host the connection fields are required")
+	}
+	if err := d.Validate(cfg.WithHost(&core.Host{Name: "web01"})); err != nil {
+		t.Errorf("with a host only the command matters: %v", err)
+	}
+	if err := d.Validate(core.Config{}.WithHost(&core.Host{Name: "web01"})); err == nil {
+		t.Error("a command is still required on a host")
+	}
+}

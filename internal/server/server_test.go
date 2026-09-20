@@ -27,6 +27,7 @@ type testEnv struct {
 	http    *httptest.Server
 	store   *store.Store
 	engine  *engine.Engine
+	secrets *secrets.Cipher
 	cookie  *http.Cookie
 	baseURL string
 }
@@ -68,7 +69,7 @@ func newEnv(t *testing.T) *testEnv {
 		_ = eng.Stop(stopCtx)
 		_ = st.Close()
 	})
-	return &testEnv{t: t, server: srv, http: ts, store: st, engine: eng, baseURL: ts.URL}
+	return &testEnv{t: t, server: srv, http: ts, store: st, engine: eng, secrets: cipher, baseURL: ts.URL}
 }
 
 func (e *testEnv) request(method, path string, body any) *http.Request {

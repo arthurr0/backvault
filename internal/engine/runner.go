@@ -68,7 +68,7 @@ func (e *Engine) runBackup(ctx context.Context, rs *runState, jobID string) erro
 	if err != nil {
 		return prepare.Fail(ctx, fmt.Errorf("load source: %w", err))
 	}
-	driver, srcCfg, err := e.SourceConfig(src)
+	driver, srcCfg, err := e.SourceRuntime(ctx, src)
 	if err != nil {
 		return prepare.Fail(ctx, err)
 	}
@@ -95,7 +95,11 @@ func (e *Engine) runBackup(ctx context.Context, rs *runState, jobID string) erro
 	if opts.Encryption == core.EncryptionAge && opts.Passphrase == "" {
 		return prepare.Fail(ctx, errors.New("encryption passphrase is required for age encryption"))
 	}
-	log.Info("run prepared", "job", job.Slug, "source", src.Kind, "destinations", len(destinations))
+	prepared := []any{"job", job.Slug, "source", src.Kind, "destinations", len(destinations)}
+	if name := hostNameOf(srcCfg); name != "" {
+		prepared = append(prepared, "host", name)
+	}
+	log.Info("run prepared", prepared...)
 	prepare.Done(ctx, fmt.Sprintf("%d destination(s)", len(destinations)))
 
 	if err := e.runHook(ctx, rs, "pre-command", job.PreCommand); err != nil {

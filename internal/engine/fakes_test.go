@@ -23,6 +23,7 @@ func init() {
 		source.Register(&fakeSource{})
 		source.Register(&blockingSource{})
 		source.Register(&gatedSource{})
+		source.Register(&remoteFakeSource{})
 		dest.Register(&memDestination{})
 		notify.Register(&captureNotifier{})
 	})
@@ -347,4 +348,68 @@ func (g *gatedSource) Backup(ctx context.Context, cfg core.Config, log *slog.Log
 		Extension: "dump",
 		Size:      int64(len(target.payload)),
 	}, nil
+}
+
+var (
+	seenHostsMu sync.Mutex
+	seenHosts   = map[string]string{}
+)
+
+const noHostSeen = "<none>"
+
+func recordHost(stage string, cfg core.Config) {
+	name := noHostSeen
+	if h := cfg.Host(); h != nil {
+		name = h.Name
+	}
+	seenHostsMu.Lock()
+	seenHosts[stage] = name
+	seenHostsMu.Unlock()
+}
+
+func seenHost(stage string) string {
+	seenHostsMu.Lock()
+	defer seenHostsMu.Unlock()
+	name, ok := seenHosts[stage]
+	if !ok {
+		return ""
+	}
+	return name
+}
+
+func resetSeenHosts() {
+	seenHostsMu.Lock()
+	seenHosts = map[string]string{}
+	seenHostsMu.Unlock()
+}
+
+type remoteFakeSource struct{}
+
+func (r *remoteFakeSource) Spec() core.DriverSpec {
+	return core.DriverSpec{
+		Kind:         "remotefake",
+		Label:        "Remote fake source",
+		Category:     "test",
+		Fields:       []core.Field{{Name: "payload", Label: "Payload", Type: core.FieldString}},
+		Capabilities: []string{core.CapTest, core.CapRestore, core.CapRemote},
+	}
+}
+
+func (r *remoteFakeSource) Validate(core.Config) error { return nil }
+
+func (r *remoteFakeSource) Test(ctx context.Context, cfg core.Config, log *slog.Logger) error {
+	recordHost("test", cfg)
+	return nil
+}
+
+func (r *remoteFakeSource) Backup(ctx context.Context, cfg core.Config, log *slog.Logger) (*source.Stream, error) {
+	recordHost("backup", cfg)
+	payload := cfg.StringOr("payload", "remote payload")
+	return &source.Stream{Reader: &fakeStream{Reader: bytes.NewReader([]byte(payload))}, Extension: "dump", Size: int64(len(payload))}, nil
+}
+
+func (r *remoteFakeSource) Restore(ctx context.Context, cfg core.Config, rd io.Reader, opts source.RestoreOptions, log *slog.Logger) error {
+	recordHost("restore", cfg)
+	_, err := io.Copy(io.Discard, rd)
+	return err
 }

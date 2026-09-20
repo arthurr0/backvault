@@ -13,9 +13,18 @@ import {
   ListChecks,
   Plus,
   Search,
+  Server,
   Settings,
 } from 'lucide-react'
-import { useDestinations, useDocsIndex, useJobs, useRunJob, useRuns, useSources } from '@/api/hooks'
+import {
+  useDestinations,
+  useDocsIndex,
+  useHosts,
+  useJobs,
+  useRunJob,
+  useRuns,
+  useSources,
+} from '@/api/hooks'
 import { routeForDoc } from '@/pages/docs/paths'
 import { errorMessage } from '@/api/client'
 import { useToast } from '@/components/ui/Toast'
@@ -48,6 +57,7 @@ export function CommandPalette({ onClose, initialQuery = '' }: CommandPalettePro
   const jobs = useJobs()
   const sources = useSources()
   const destinations = useDestinations()
+  const hosts = useHosts()
   const runs = useRuns({ limit: 8 })
   const docs = useDocsIndex()
   const runJob = useRunJob()
@@ -72,6 +82,7 @@ export function CommandPalette({ onClose, initialQuery = '' }: CommandPalettePro
       { id: 'nav-runs', group: 'Go to', label: 'Runs', hint: 'g r', icon: <Activity className="size-4" />, run: go('/runs') },
       { id: 'nav-artifacts', group: 'Go to', label: 'Artifacts', hint: 'g a', icon: <Archive className="size-4" />, run: go('/artifacts') },
       { id: 'nav-sources', group: 'Go to', label: 'Sources', icon: <Database className="size-4" />, run: go('/sources') },
+      { id: 'nav-hosts', group: 'Go to', label: 'Hosts', hint: 'g o', icon: <Server className="size-4" />, run: go('/hosts') },
       { id: 'nav-destinations', group: 'Go to', label: 'Destinations', icon: <HardDrive className="size-4" />, run: go('/destinations') },
       { id: 'nav-notifications', group: 'Go to', label: 'Notifications', icon: <Bell className="size-4" />, run: go('/notifications') },
       { id: 'nav-docs', group: 'Go to', label: 'Docs', hint: 'g h', icon: <BookOpen className="size-4" />, run: go('/docs') },
@@ -83,6 +94,7 @@ export function CommandPalette({ onClose, initialQuery = '' }: CommandPalettePro
         { id: 'new-job', group: 'Create', label: 'New job', icon: <Plus className="size-4" />, run: go('/jobs/new') },
         { id: 'new-source', group: 'Create', label: 'New source', icon: <Plus className="size-4" />, run: go('/sources?new=1') },
         { id: 'new-destination', group: 'Create', label: 'New destination', icon: <Plus className="size-4" />, run: go('/destinations?new=1') },
+        { id: 'new-host', group: 'Create', label: 'Add host', icon: <Plus className="size-4" />, run: go('/hosts?new=1') },
       )
     }
 
@@ -125,6 +137,16 @@ export function CommandPalette({ onClose, initialQuery = '' }: CommandPalettePro
         run: go(can.admin ? `/sources?edit=${source.id}` : '/sources'),
       })
     }
+    for (const host of hosts.data ?? []) {
+      list.push({
+        id: `host-${host.id}`,
+        group: 'Hosts',
+        label: host.name,
+        hint: `${host.user}@${host.address}`,
+        icon: <Server className="size-4" />,
+        run: go(can.admin ? `/hosts?edit=${host.id}` : '/hosts'),
+      })
+    }
     for (const destination of destinations.data ?? []) {
       list.push({
         id: `destination-${destination.id}`,
@@ -156,7 +178,7 @@ export function CommandPalette({ onClose, initialQuery = '' }: CommandPalettePro
       })
     }
     return list
-  }, [jobs.data, sources.data, destinations.data, runs.data, docs.data, navigate, onClose, runJob, toast, can])
+  }, [jobs.data, sources.data, hosts.data, destinations.data, runs.data, docs.data, navigate, onClose, runJob, toast, can])
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -199,7 +221,7 @@ export function CommandPalette({ onClose, initialQuery = '' }: CommandPalettePro
             ref={inputRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search pages, jobs, sources, destinations, runs"
+            placeholder="Search pages, jobs, sources, hosts, destinations, runs"
             aria-label="Command palette search"
             className="h-12 flex-1 bg-transparent text-sm outline-none placeholder:text-soft"
             onKeyDown={(event) => {

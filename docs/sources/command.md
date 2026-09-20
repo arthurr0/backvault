@@ -4,7 +4,7 @@ Runs a shell command on the Backvault host and stores what it writes to standard
 is the escape hatch for everything without a driver of its own.
 
 Kind `command`. Extension configurable, `bin` by default. Requires whatever the command
-itself needs. Capabilities: test, restore when `restore_command` is set.
+itself needs. Capabilities: test, restore when `restore_command` is set, remote.
 
 ## Configuration fields
 
@@ -63,6 +63,24 @@ sources:
       env:
         - BILLING_TOKEN=********
 ```
+
+## Run on a host
+
+Pick a host in the **Run on** select and the command runs there instead, assembled as:
+
+```
+cd <working_dir> && env KEY=VALUE ... <shell> -c '<command>'
+```
+
+The working directory, the environment and the shell are all interpreted on the host, and the
+working directory is no longer checked when the source is saved because it does not exist on
+the Backvault server. `test_command` and `restore_command` run the same way, with the restore
+receiving the unpacked artifact on standard input.
+
+Environment values are quoted for the remote shell and masked in the run log, so a password
+passed that way stays out of the log. It is still visible to anyone who can read
+`/proc/<pid>/environ` on the host while the command runs, so prefer a file on the host for
+long-lived credentials.
 
 ## Restore
 

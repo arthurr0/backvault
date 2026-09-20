@@ -18,9 +18,10 @@ import (
 )
 
 type harness struct {
-	engine *Engine
-	store  *store.Store
-	dir    string
+	engine  *Engine
+	store   *store.Store
+	secrets *secrets.Cipher
+	dir     string
 }
 
 func newHarness(t *testing.T) *harness {
@@ -55,7 +56,7 @@ func newHarness(t *testing.T) *harness {
 		_ = e.Stop(stopCtx)
 		_ = st.Close()
 	})
-	return &harness{engine: e, store: st, dir: dir}
+	return &harness{engine: e, store: st, secrets: cipher, dir: dir}
 }
 
 func (h *harness) job(t *testing.T, name string, srcCfg core.Config, destCfgs []core.Config, mutate func(*core.Job)) core.Job {

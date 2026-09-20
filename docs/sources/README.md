@@ -23,6 +23,11 @@ credential shows up now rather than at two in the morning.
 | [`command`](command.md) | Custom command | `bin` by default, configurable | none | optional |
 | [`push`](push.md) | Push from a remote script | derived from the upload | none | no |
 
+Every driver above except `push` can also run on another machine over SSH: pick a host in the
+**Run on** select of the source form and the dump, the test and the restore all happen there.
+The tools in the **External tools** column then have to exist on that machine rather than on the
+Backvault server. See [../hosts.md](../hosts.md).
+
 The extension ends up in the artifact filename:
 `<job-slug>/<job-slug>-<YYYYMMDD>-<HHMMSS>.<ext>[.gz|.zst][.age]`. Compression and
 encryption are job settings, not source settings, and are described in

@@ -7,6 +7,7 @@ import {
   Download,
   PencilLine,
   Scissors,
+  Server,
   Trash,
   TriangleAlert,
 } from 'lucide-react'
@@ -221,6 +222,12 @@ export function JobDetailPage() {
         <Card title="Source">
           <p className="text-sm text-text">{data.sourceName ?? source?.name ?? '-'}</p>
           <p className="mt-1 text-xs text-muted">{data.sourceKind ?? source?.kind}</p>
+          {source?.hostId ? (
+            <p className="mt-2 inline-flex items-center gap-1.5 rounded bg-surface-3 px-1.5 py-0.5 text-[11px] text-muted">
+              <Server className="size-3 shrink-0" aria-hidden="true" />
+              <span className="truncate">Runs on {source.hostName || 'a remote host'}</span>
+            </p>
+          ) : null}
           {isPush && data.expectedIntervalMinutes ? (
             <p className="mt-3 text-xs text-muted">
               Expected every {data.expectedIntervalMinutes} minutes

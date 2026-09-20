@@ -4,7 +4,7 @@ Dumps one database, or every database, with `mysqldump` or `mariadb-dump` and st
 SQL into the backup pipeline.
 
 Kind `mysql`. Extension `sql`. Requires `mysqldump` or `mariadb-dump` on the Backvault host,
-and `mysql` (or `mariadb`) for connection tests and restores. Capabilities: test, restore.
+and `mysql` (or `mariadb`) for connection tests and restores. Capabilities: test, restore, remote.
 
 ## Configuration fields
 
@@ -64,6 +64,24 @@ sources:
         - --ignore-table=shop.sessions
         - --ignore-table=shop.cache_items
 ```
+
+## Run on a host
+
+Pick a host in the **Run on** select and `mysqldump` runs on that machine. The defaults file
+that carries the password is created there, not here:
+
+```
+umask 077; f=$(mktemp) || exit 1; printf '%s' '<the defaults file>' > "$f"
+mysqldump --defaults-extra-file="$f" ...; rc=$?; rm -f "$f"; exit $rc
+```
+
+`umask 077` means the file is only readable by the account Backvault connects as, and it is
+removed whether the dump succeeded or failed. The password never reaches a command line, so it
+stays out of the host's process list. `socket` is the socket path on the host, which is the
+usual reason to run MySQL backups this way at all.
+
+**Test connection** runs `select 1` through the `mysql` client on the host. Restores pipe the
+artifact into `mysql` there.
 
 ## Restore
 

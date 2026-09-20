@@ -7,6 +7,7 @@ Backvault models backups as five objects that reference each other: sources, des
 | Object | What it is | Identified by |
 |---|---|---|
 | Source | What to back up, for example a PostgreSQL database or a directory | id, name |
+| Host | A reusable SSH connection a source can run on instead of the Backvault server | id, name |
 | Destination | Where artifacts are stored, for example an S3 bucket or an SFTP host | id, name |
 | Job | A source, one or more destinations, a schedule, and the packing, retention and notification settings | id, unique `slug` |
 | Run | One execution of a job | id |
@@ -30,6 +31,20 @@ example [sources/postgres.md](sources/postgres.md).
 
 One source can be used by many jobs. Deleting a source that a job still references is refused with
 HTTP 409.
+
+A source also carries an optional `hostId`. When it is empty the driver runs on the Backvault
+server, which is the default. When it points at a host, the driver runs its dump, test and restore
+on that machine over SSH, and paths, ports and credentials in the configuration are read as they
+are there. Only drivers that declare the `remote` capability accept a host; the API refuses a
+`hostId` for the others. See [hosts.md](hosts.md).
+
+### Host
+
+A host is an SSH connection Backvault reuses: address, port, user, key or password, an optional
+pinned host key fingerprint and an optional sudo flag. Its secrets are encrypted at rest like any
+other secret. Testing a host records the operating system it reported and which known tools are
+installed there, which is also what the source forms use to warn about a missing `pg_dump` or
+`tar`. Deleting a host that a source still references is refused with HTTP 409.
 
 ### Destination
 

@@ -7,6 +7,7 @@ import { ArtifactsPage } from '@/pages/Artifacts'
 import { DashboardPage } from '@/pages/Dashboard'
 import { DestinationBrowsePage } from '@/pages/DestinationBrowse'
 import { DestinationsPage } from '@/pages/Destinations'
+import { HostsPage } from '@/pages/Hosts'
 import { JobDetailPage } from '@/pages/JobDetail'
 import { JobEditorPage } from '@/pages/JobEditor'
 import { JobsPage } from '@/pages/Jobs'
@@ -65,6 +66,7 @@ export function App() {
         <Route path="runs/:id" element={<RunDetailPage />} />
         <Route path="artifacts" element={<ArtifactsPage />} />
         <Route path="sources" element={<SourcesPage />} />
+        <Route path="hosts" element={<HostsPage />} />
         <Route path="destinations" element={<DestinationsPage />} />
         <Route path="destinations/:id/browse" element={<DestinationBrowsePage />} />
         <Route path="notifications" element={<NotificationsPage />} />

@@ -13,6 +13,8 @@ produced from the admin panel, either against a real instance or against the moc
 | `job-editor.png` | The job editor with the schedule builder, the next occurrences and the packing options |
 | `destinations.png` | The destinations list with usage bars |
 | `dashboard-dark.png` | The same dashboard in the dark theme |
+| `hosts.png` | The hosts list with a tested SSH host, the tools found on it and its source count |
+| `host-dialog.png` | The host dialog with a generated key pair, the public key and the `authorized_keys` snippet |
 
 Guidelines: capture at 1440 by 900 in the light theme, except the run log and the dark
 dashboard which are captured in the dark theme, set the browser timezone to UTC so the times

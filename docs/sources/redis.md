@@ -3,7 +3,7 @@
 Asks a Redis server for a fresh RDB snapshot with `redis-cli --rdb` and stores that
 snapshot as the artifact.
 
-Kind `redis`. Extension `rdb`. Requires `redis-cli` on the Backvault host. Capabilities: test.
+Kind `redis`. Extension `rdb`. Requires `redis-cli` on the Backvault host. Capabilities: test, remote.
 This driver has no restore support.
 
 ## Configuration fields
@@ -59,6 +59,20 @@ sources:
       extra_args:
         - --cacert=/etc/ssl/redis-ca.pem
 ```
+
+## Run on a host
+
+Pick a host in the **Run on** select and `redis-cli` runs on that machine:
+
+```
+env REDISCLI_AUTH=... redis-cli -h <host> -p <port> --no-auth-warning --rdb -
+```
+
+The password travels in the environment, never as an argument. With `host: 127.0.0.1` the
+snapshot is pulled from the Redis server on the host itself, which is the common case for a
+server that is not exposed to the network. The host needs `redis-tools` installed.
+
+**Test connection** sends `PING` through `redis-cli` on the host and expects `PONG`.
 
 ## Restore
 

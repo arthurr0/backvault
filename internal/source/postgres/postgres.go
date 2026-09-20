@@ -10,7 +10,7 @@ import (
 
 	"github.com/arthurr0/backvault/internal/core"
 	"github.com/arthurr0/backvault/internal/source"
-	"github.com/arthurr0/backvault/internal/source/internal/procstream"
+	"github.com/arthurr0/backvault/internal/source/internal/remoteexec"
 )
 
 type Driver struct{}
@@ -30,6 +30,7 @@ func (d *Driver) Spec() core.DriverSpec {
 		Capabilities: []string{
 			core.CapTest,
 			core.CapRestore,
+			core.CapRemote,
 		},
 		Fields: []core.Field{
 			{
@@ -121,45 +122,32 @@ func (d *Driver) Validate(cfg core.Config) error {
 }
 
 func (d *Driver) Test(ctx context.Context, cfg core.Config, log *slog.Logger) error {
-	db := cfg.StringOr("database", "postgres")
-	if bin, err := procstream.Lookup(cfg.String("binary_path"), "psql"); err == nil {
-		args := append(connArgs(cfg), "-d", db, "-w", "-tAX", "-c", "select 1")
-		return procstream.Run(ctx, log, procstream.Command{
-			Name: bin, Args: args, Env: env(cfg), Redact: redact(cfg), Label: "psql",
-		})
+	r, err := remoteexec.Open(ctx, cfg, log)
+	if err != nil {
+		return err
 	}
-	bin, err := procstream.Lookup(cfg.String("binary_path"), "pg_isready")
+	defer r.Close()
+	db := cfg.StringOr("database", "postgres")
+	if bin, err := r.Tool(ctx, cfg.String("binary_path"), "psql"); err == nil {
+		argv := append([]string{bin}, append(connArgs(cfg), "-d", db, "-w", "-tAX", "-c", "select 1")...)
+		return r.Run(ctx, remoteexec.Command{Argv: argv, Env: env(cfg), Redact: redact(cfg), Label: "psql"})
+	}
+	bin, err := r.Tool(ctx, cfg.String("binary_path"), "pg_isready")
 	if err != nil {
 		return fmt.Errorf("neither psql nor pg_isready is available: %w", err)
 	}
-	return procstream.Run(ctx, log, procstream.Command{
-		Name: bin, Args: append(connArgs(cfg), "-d", db), Env: env(cfg), Redact: redact(cfg), Label: "pg_isready",
-	})
+	argv := append([]string{bin}, append(connArgs(cfg), "-d", db)...)
+	return r.Run(ctx, remoteexec.Command{Argv: argv, Env: env(cfg), Redact: redact(cfg), Label: "pg_isready"})
 }
 
-func (d *Driver) Backup(ctx context.Context, cfg core.Config, log *slog.Logger) (*source.Stream, error) {
-	if err := d.Validate(cfg); err != nil {
-		return nil, err
-	}
-	all := cfg.Bool("all_databases", false)
-	ext := "sql"
-	var bin string
-	var args []string
-	var err error
-	if all {
-		bin, err = procstream.Lookup(cfg.String("binary_path"), "pg_dumpall")
-		if err != nil {
-			return nil, err
-		}
+func dumpArgs(cfg core.Config) (args []string, ext string) {
+	ext = "sql"
+	if cfg.Bool("all_databases", false) {
 		args = append(connArgs(cfg), "-w")
 		if cfg.Bool("schema_only", false) {
 			args = append(args, "--schema-only")
 		}
 	} else {
-		bin, err = procstream.Lookup(cfg.String("binary_path"), "pg_dump")
-		if err != nil {
-			return nil, err
-		}
 		args = append(connArgs(cfg), "-w", "-d", cfg.String("database"))
 		if cfg.StringOr("format", "custom") == "custom" {
 			args = append(args, "-F", "c")
@@ -174,20 +162,38 @@ func (d *Driver) Backup(ctx context.Context, cfg core.Config, log *slog.Logger) 
 			args = append(args, "--exclude-table="+t)
 		}
 	}
-	args = append(args, cfg.StringList("extra_args")...)
-	label := "pg_dump"
-	if all {
-		label = "pg_dumpall"
+	return append(args, cfg.StringList("extra_args")...), ext
+}
+
+func (d *Driver) Backup(ctx context.Context, cfg core.Config, log *slog.Logger) (*source.Stream, error) {
+	if err := d.Validate(cfg); err != nil {
+		return nil, err
 	}
-	log.Info("dumping postgres", "host", cfg.String("host"), "database", scope(cfg), "format", ext)
-	p, err := procstream.Start(ctx, log, procstream.Command{
-		Name: bin, Args: args, Env: env(cfg), Redact: redact(cfg), Label: label,
-	})
+	r, err := remoteexec.Open(ctx, cfg, log)
 	if err != nil {
 		return nil, err
 	}
+	all := cfg.Bool("all_databases", false)
+	tool := "pg_dump"
+	if all {
+		tool = "pg_dumpall"
+	}
+	bin, err := r.Tool(ctx, cfg.String("binary_path"), tool)
+	if err != nil {
+		r.Close()
+		return nil, err
+	}
+	args, ext := dumpArgs(cfg)
+	log.Info("dumping postgres", "host", cfg.String("host"), "database", scope(cfg), "format", ext, "where", where(r))
+	reader, err := r.Start(ctx, remoteexec.Command{
+		Argv: append([]string{bin}, args...), Env: env(cfg), Redact: redact(cfg), Label: tool,
+	})
+	if err != nil {
+		r.Close()
+		return nil, err
+	}
 	return &source.Stream{
-		Reader:    p,
+		Reader:    reader,
 		Extension: ext,
 		Meta: map[string]string{
 			"host":     cfg.String("host"),
@@ -197,15 +203,19 @@ func (d *Driver) Backup(ctx context.Context, cfg core.Config, log *slog.Logger) 
 	}, nil
 }
 
-func (d *Driver) Restore(ctx context.Context, cfg core.Config, r io.Reader, opts source.RestoreOptions, log *slog.Logger) error {
+func (d *Driver) Restore(ctx context.Context, cfg core.Config, src io.Reader, opts source.RestoreOptions, log *slog.Logger) error {
 	params := opts.Params
 	if params == nil {
 		params = core.Config{}
 	}
+	r, err := remoteexec.Open(ctx, cfg, log)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
 	target := params.StringOr("database", cfg.StringOr("database", "postgres"))
-	custom := strings.EqualFold(opts.Extension, "dump")
-	if custom {
-		bin, err := procstream.Lookup(cfg.String("binary_path"), "pg_restore")
+	if strings.EqualFold(opts.Extension, "dump") {
+		bin, err := r.Tool(ctx, cfg.String("binary_path"), "pg_restore")
 		if err != nil {
 			return err
 		}
@@ -222,12 +232,13 @@ func (d *Driver) Restore(ctx context.Context, cfg core.Config, r io.Reader, opts
 		if params.Bool("no_owner", true) {
 			args = append(args, "--no-owner")
 		}
-		log.Info("restoring postgres dump", "database", target, "tool", "pg_restore")
-		return procstream.Run(ctx, log, procstream.Command{
-			Name: bin, Args: args, Env: env(cfg), Stdin: r, Redact: redact(cfg), Label: "pg_restore",
+		log.Info("restoring postgres dump", "database", target, "tool", "pg_restore", "where", where(r))
+		return r.Run(ctx, remoteexec.Command{
+			Argv: append([]string{bin}, args...), Env: env(cfg), Stdin: src,
+			Redact: redact(cfg), Label: "pg_restore",
 		})
 	}
-	bin, err := procstream.Lookup(cfg.String("binary_path"), "psql")
+	bin, err := r.Tool(ctx, cfg.String("binary_path"), "psql")
 	if err != nil {
 		return err
 	}
@@ -238,10 +249,18 @@ func (d *Driver) Restore(ctx context.Context, cfg core.Config, r io.Reader, opts
 	if params.Bool("single_transaction", false) {
 		args = append(args, "--single-transaction")
 	}
-	log.Info("restoring postgres sql", "database", target, "tool", "psql")
-	return procstream.Run(ctx, log, procstream.Command{
-		Name: bin, Args: args, Env: env(cfg), Stdin: r, Redact: redact(cfg), Label: "psql",
+	log.Info("restoring postgres sql", "database", target, "tool", "psql", "where", where(r))
+	return r.Run(ctx, remoteexec.Command{
+		Argv: append([]string{bin}, args...), Env: env(cfg), Stdin: src,
+		Redact: redact(cfg), Label: "psql",
 	})
+}
+
+func where(r *remoteexec.Runner) string {
+	if r.Remote() {
+		return "host " + r.HostLabel()
+	}
+	return "this server"
 }
 
 func connArgs(cfg core.Config) []string {

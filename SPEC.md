@@ -384,3 +384,64 @@ logs to stderr with timestamps, temp files cleaned with `trap`. Each script has 
   verified against `postgres:16` container (integration tests behind `BACKVAULT_TEST_DOCKER=1`).
 - Docs cover install, first backup, every driver, Hetzner Storage Box, S3 providers, encryption, retention,
   push/ingest, restore, API, CLI, scripts, troubleshooting.
+
+## 12. Hosts (remote execution over SSH), added 2026-09-20
+
+A **Host** (`core.Host`) is a reusable SSH connection: address, port (default 22), user, auth
+`key` (default) or `password`, private key (PEM, secret), key passphrase (secret), password
+(secret), public key (derived, shown in the UI), optional pinned host key fingerprint
+(`SHA256:...`, TOFU with a warning when empty), `sudo` (prefix every command with
+`sudo -n -- sh -c '<cmd>'`), connect timeout, tags, last test result, `lastSeenOs`, `tools`
+(names from `remote.KnownTools` found on the host), `sourceCount`.
+
+Sources gain `hostId` (empty = run on the Backvault server). A driver that can run on a host
+declares `core.CapRemote` in its capabilities. Before `Backup`, `Restore` and `Test`, the engine
+loads the host (decrypted) and attaches it to the driver config with `cfg.WithHost(&host)`; the
+driver reads it back with `cfg.Host()`. Drivers without `CapRemote` ignore it and the API refuses
+a `hostId` for them (400 `validation_failed`, field `hostId`). Fields with `LocalOnly: true` are
+hidden by the UI when a host is selected (the `ssh` source uses it for its own connection fields;
+with a host selected it runs `command` on that host).
+
+`internal/remote` is the shared implementation: `Validate(host)`, `GenerateKey(comment)` (ed25519,
+OpenSSH PEM), `PublicKeyOf(host)`, `Dial(ctx, host, log) (*Client, error)`, `Client.Exec(ctx, cmd,
+stdin) (Output, error)` for short commands, `Client.Start(ctx, cmd, stdin, label) (*Stream, error)`
+and `Run(ctx, host, cmd, stdin, label, log)` for streaming commands whose `Close()` follows the
+SPEC 4.3 semantics (non-nil error on non-zero exit, aborted copy, or transport failure, with the
+last stderr lines), `Client.Probe(ctx)` (OS string + available tools), `ShellQuote`/`ShellJoin`.
+Remote stderr lines go to the run log (info, warn when they look like errors).
+
+Remote behaviour per driver when `cfg.Host()` is set:
+- `files`: runs GNU/BSD-compatible `tar -C <base> -cf - --exclude=<glob>... <paths>` on the host
+  (`--one-file-system`, `-h` for follow symlinks when supported), restore extracts with `tar -xf -`
+  on the host into `TargetPath`.
+- `docker`: runs the same `docker run --rm -v <vol>:/data:ro <image> tar -C /data -cf - .` or
+  `docker exec ...` on the host; restore runs the helper container on the host with stdin.
+  `binary_path` may point at `podman` on the host.
+- `command`: runs `command` (and `restore_command`) on the host; `working_dir` and `env` are applied
+  with `cd` and `env KEY=VALUE`.
+- `ssh`: with a host selected, connection fields (`LocalOnly`) are ignored and `command` runs on it.
+- `postgres`, `mysql`, `mongodb`, `redis`, `sqlite`: the dump and restore tools run on the host
+  (`pg_dump`, `mysqldump`, ... must exist there; `Test` reports which are missing); passwords are
+  passed through the environment or a temporary defaults file created on the host with `umask 077`
+  and removed afterwards, never on the command line.
+
+HTTP API (admin unless noted): `GET /hosts` (read), `POST /hosts`, `GET /hosts/{id}` (read),
+`PUT /hosts/{id}`, `DELETE /hosts/{id}` (409 when sources reference it), `POST /hosts/test`
+(unsaved `core.Host`), `POST /hosts/{id}/test` (stores result, OS and tools), `POST /hosts/{id}/keygen`
+(generates a new ed25519 key pair, stores the private key, switches auth to `key`, returns the host
+with `publicKey`), `POST /hosts/keygen` (returns `{privateKey, publicKey}` for an unsaved host).
+Secrets are masked with `********` and kept on update when the mask is sent back. `GET /sources`
+includes `hostName`; `?host=<id>` filters. Export/import carry hosts (secrets masked unless
+`includeSecrets=1`) and sources reference hosts by name (`host: <name>`).
+
+UI: a **Hosts** page (sidebar entry between Sources and Destinations, icon Server): table with
+address, user, auth, tools found, sources count, last test; create/edit dialog with a "Generate key"
+button that fills the private key and shows the public key with a copy button and a ready-to-paste
+`authorized_keys` snippet; "Test connection" shows OS and tools. Source dialogs show a "Run on"
+select (This server / each host) for drivers with `remote`; when a host is chosen, `LocalOnly`
+fields are hidden. Job detail and source cards show the host name. The restore dialog in
+`source` mode offers a target path for the drivers that read `RestoreOptions.TargetPath`
+(`files` as a directory, `sqlite` as a file); empty means the source's own `base_dir` or
+`path`, and the help text names the host when the target source runs on one. Remote commands
+are written to the run log exactly as they are sent, `sudo -n -- sh -c '...'` wrapper
+included.

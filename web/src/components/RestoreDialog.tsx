@@ -18,6 +18,19 @@ import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
 import type { Artifact, RestoreMode } from '@/api/types'
 
+const SOURCE_TARGET: Record<string, { label: string; placeholder: string; help: string }> = {
+  files: {
+    label: 'Target directory',
+    placeholder: '/srv/restore',
+    help: 'Absolute directory on the machine the source runs on. Leave empty to extract over the base directory of the source.',
+  },
+  sqlite: {
+    label: 'Target file',
+    placeholder: '/var/lib/app/restored.db',
+    help: 'Absolute path on the machine the source runs on. Leave empty to replace the database the source reads.',
+  },
+}
+
 const PRESET_PARAMS: Record<string, string[]> = {
   postgres: ['database', 'clean', 'create', 'if_exists', 'no_owner', 'single_transaction'],
   mysql: ['database'],
@@ -36,6 +49,7 @@ export function RestoreDialog({
 }) {
   const [mode, setMode] = useState<RestoreMode>('path')
   const [targetPath, setTargetPath] = useState('')
+  const [sourceTargetPath, setSourceTargetPath] = useState('')
   const [extract, setExtract] = useState(false)
   const [targetSourceId, setTargetSourceId] = useState('')
   const [passphrase, setPassphrase] = useState('')
@@ -50,6 +64,10 @@ export function RestoreDialog({
 
   const sameKindSources = (sources.data ?? []).filter((source) => source.kind === artifact.sourceKind)
   const isTar = artifact.extension === 'tar'
+  const targetSource =
+    sameKindSources.find((source) => source.id === targetSourceId) ??
+    sameKindSources.find((source) => source.id === job.data?.sourceId)
+  const sourceTarget = SOURCE_TARGET[artifact.sourceKind]
   const presets = PRESET_PARAMS[artifact.sourceKind] ?? []
   const params = paramRowsToConfig(paramRows)
   const hasParams = Object.keys(params).length > 0
@@ -59,7 +77,12 @@ export function RestoreDialog({
       {
         id: artifact.id,
         mode,
-        targetPath: mode === 'path' ? targetPath : undefined,
+        targetPath:
+          mode === 'path'
+            ? targetPath
+            : sourceTarget
+              ? sourceTargetPath.trim() || undefined
+              : undefined,
         extract: mode === 'path' ? extract : undefined,
         targetSourceId: mode === 'source' ? targetSourceId || undefined : undefined,
         passphrase: passphrase || undefined,
@@ -189,6 +212,27 @@ export function RestoreDialog({
                 ))}
               </Select>
             </FieldShell>
+
+            {sourceTarget ? (
+              <FieldShell
+                label={sourceTarget.label}
+                htmlFor="restore-source-path"
+                help={
+                  targetSource?.hostName
+                    ? `${sourceTarget.help} This source runs on ${targetSource.hostName}.`
+                    : sourceTarget.help
+                }
+              >
+                <Input
+                  id="restore-source-path"
+                  className="font-mono"
+                  spellCheck={false}
+                  placeholder={sourceTarget.placeholder}
+                  value={sourceTargetPath}
+                  onChange={(event) => setSourceTargetPath(event.target.value)}
+                />
+              </FieldShell>
+            ) : null}
 
             <FieldShell
               label="Driver parameters"

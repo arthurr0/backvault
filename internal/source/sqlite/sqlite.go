@@ -37,6 +37,7 @@ func (d *Driver) Spec() core.DriverSpec {
 		Capabilities: []string{
 			core.CapTest,
 			core.CapRestore,
+			core.CapRemote,
 		},
 		Fields: []core.Field{
 			{
@@ -82,6 +83,9 @@ func (d *Driver) Test(ctx context.Context, cfg core.Config, log *slog.Logger) er
 	if err := d.Validate(cfg); err != nil {
 		return err
 	}
+	if cfg.Host() != nil {
+		return d.testRemote(ctx, cfg, log)
+	}
 	path := cfg.String("path")
 	info, err := os.Stat(path)
 	if err != nil {
@@ -106,6 +110,9 @@ func (d *Driver) Test(ctx context.Context, cfg core.Config, log *slog.Logger) er
 func (d *Driver) Backup(ctx context.Context, cfg core.Config, log *slog.Logger) (*source.Stream, error) {
 	if err := d.Validate(cfg); err != nil {
 		return nil, err
+	}
+	if cfg.Host() != nil {
+		return d.backupRemote(ctx, cfg, log)
 	}
 	path := cfg.String("path")
 	if _, err := os.Stat(path); err != nil {
@@ -154,6 +161,9 @@ func (d *Driver) Backup(ctx context.Context, cfg core.Config, log *slog.Logger) 
 }
 
 func (d *Driver) Restore(ctx context.Context, cfg core.Config, r io.Reader, opts source.RestoreOptions, log *slog.Logger) error {
+	if cfg.Host() != nil {
+		return d.restoreRemote(ctx, cfg, r, opts, log)
+	}
 	target := opts.TargetPath
 	if target == "" {
 		target = cfg.String("path")

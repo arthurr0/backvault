@@ -17,6 +17,10 @@ import type {
   DocsPageResponse,
   DocsSearchResponse,
   DriverSpec,
+  Host,
+  HostInput,
+  HostKeyPair,
+  HostTestResult,
   ImportResult,
   Job,
   ListResponse,
@@ -162,6 +166,7 @@ export interface SourceInput {
   kind: string
   description?: string
   config: Config
+  hostId?: string
   tags?: string[]
 }
 
@@ -191,13 +196,87 @@ export function useDeleteSource() {
 export function useTestSource() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (input: { id?: string; kind: string; config: Config }) =>
-      input.id
-        ? api.post<TestResult>(`/sources/${input.id}/test`, { kind: input.kind, config: input.config })
-        : api.post<TestResult>('/sources/test', { kind: input.kind, config: input.config }),
+    mutationFn: (input: { id?: string; kind: string; config: Config; hostId?: string }) => {
+      const body = { kind: input.kind, config: input.config, hostId: input.hostId ?? '' }
+      return input.id
+        ? api.post<TestResult>(`/sources/${input.id}/test`, body)
+        : api.post<TestResult>('/sources/test', body)
+    },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: qk.sources })
     },
+  })
+}
+
+export function useHosts(filters: Filters = {}) {
+  return useQuery({
+    queryKey: qk.hosts(filters),
+    queryFn: () =>
+      api.get<ListResponse<Host>>('/hosts', { query: { limit: 500, ...filters } }).then(listOf),
+  })
+}
+
+export function useHost(id: string | undefined) {
+  return useQuery({
+    queryKey: qk.host(id ?? ''),
+    queryFn: () => api.get<Host>(`/hosts/${id}`),
+    enabled: Boolean(id),
+  })
+}
+
+function invalidateHosts(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: ['hosts'] })
+  void qc.invalidateQueries({ queryKey: qk.sources })
+}
+
+export function useSaveHost(id?: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: HostInput) =>
+      id ? api.put<Host>(`/hosts/${id}`, input) : api.post<Host>('/hosts', input),
+    onSuccess: (saved) => {
+      invalidateHosts(qc)
+      qc.setQueryData(qk.host(saved.id), saved)
+    },
+  })
+}
+
+export function useDeleteHost() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.del<void>(`/hosts/${id}`),
+    onSuccess: () => invalidateHosts(qc),
+  })
+}
+
+export function useTestHost() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.post<HostTestResult>(`/hosts/${id}/test`),
+    onSuccess: () => invalidateHosts(qc),
+  })
+}
+
+export function useTestUnsavedHost() {
+  return useMutation({
+    mutationFn: (input: HostInput) => api.post<HostTestResult>('/hosts/test', input),
+  })
+}
+
+export function useHostKeygen() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.post<Host>(`/hosts/${id}/keygen`),
+    onSuccess: (saved) => {
+      invalidateHosts(qc)
+      qc.setQueryData(qk.host(saved.id), saved)
+    },
+  })
+}
+
+export function useUnsavedHostKeygen() {
+  return useMutation({
+    mutationFn: () => api.post<HostKeyPair>('/hosts/keygen'),
   })
 }
 

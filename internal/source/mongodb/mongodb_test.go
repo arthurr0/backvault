@@ -1,9 +1,11 @@
 package mongodb
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/arthurr0/backvault/internal/core"
+	"github.com/arthurr0/backvault/internal/source/internal/remoteexec"
 )
 
 func TestValidate(t *testing.T) {
@@ -45,5 +47,21 @@ func TestTargetDescription(t *testing.T) {
 	}
 	if target(core.Config{"database": "app", "collection": "events"}) != "app.events" {
 		t.Error("collection target")
+	}
+}
+
+func TestRemoteDumpLine(t *testing.T) {
+	cfg := core.Config{
+		"uri":      "mongodb://user:hunter2hunter2@10.0.0.9:27017/?authSource=admin",
+		"database": "app", "collection": "events",
+	}
+	cmd := remoteexec.Command{Argv: append([]string{"mongodump"}, dumpArgs(cfg)...), Redact: redact(cfg)}
+	line := remoteexec.ShellLine(cmd)
+	want := `mongodump '--uri=mongodb://user:hunter2hunter2@10.0.0.9:27017/?authSource=admin' --archive --db=app --collection=events`
+	if line != want {
+		t.Errorf("got %q, want %q", line, want)
+	}
+	if logged := remoteexec.LogLine(cmd); strings.Contains(logged, "hunter2hunter2") {
+		t.Errorf("the uri leaked into the log line: %s", logged)
 	}
 }

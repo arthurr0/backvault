@@ -31,6 +31,7 @@ func main() {
 		newVersionCommand(),
 		newRunCommand(),
 		newJobsCommand(),
+		newHostsCommand(),
 		newRunsCommand(),
 		newRestoreCommand(),
 		newPushCommand(),

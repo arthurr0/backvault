@@ -9,7 +9,7 @@ import (
 
 	"github.com/arthurr0/backvault/internal/core"
 	"github.com/arthurr0/backvault/internal/source"
-	"github.com/arthurr0/backvault/internal/source/internal/procstream"
+	"github.com/arthurr0/backvault/internal/source/internal/remoteexec"
 )
 
 const defaultImage = "alpine:3.20"
@@ -31,6 +31,7 @@ func (d *Driver) Spec() core.DriverSpec {
 		Capabilities: []string{
 			core.CapTest,
 			core.CapRestore,
+			core.CapRemote,
 		},
 		Fields: []core.Field{
 			{
@@ -115,27 +116,32 @@ func (d *Driver) Test(ctx context.Context, cfg core.Config, log *slog.Logger) er
 	if err := d.Validate(cfg); err != nil {
 		return err
 	}
-	bin, err := procstream.Lookup(cfg.String("binary_path"), "docker", "podman")
+	r, err := remoteexec.Open(ctx, cfg, log)
 	if err != nil {
 		return err
 	}
-	out, err := procstream.Output(ctx, log, procstream.Command{
-		Name: bin, Args: []string{"version", "--format", "{{.Server.Version}}"},
-		Env: env(cfg), Label: "docker", Quiet: true,
+	defer r.Close()
+	bin, err := r.Tool(ctx, cfg.String("binary_path"), "docker", "podman")
+	if err != nil {
+		return err
+	}
+	out, err := r.Output(ctx, remoteexec.Command{
+		Argv: []string{bin, "version", "--format", "{{.Server.Version}}"},
+		Env:  env(cfg), Label: "docker", Quiet: true,
 	})
 	if err != nil {
 		return fmt.Errorf("docker daemon not reachable: %w", err)
 	}
-	log.Info("docker daemon reachable", "version", strings.TrimSpace(string(out)))
+	log.Info("docker daemon reachable", "version", strings.TrimSpace(string(out)), "where", where(r))
 	if cfg.StringOr("mode", "volume") == "volume" {
-		return procstream.Run(ctx, log, procstream.Command{
-			Name: bin, Args: []string{"volume", "inspect", "--format", "{{.Mountpoint}}", cfg.String("volume")},
-			Env: env(cfg), Label: "docker", Quiet: true,
+		return r.Run(ctx, remoteexec.Command{
+			Argv: []string{bin, "volume", "inspect", "--format", "{{.Mountpoint}}", cfg.String("volume")},
+			Env:  env(cfg), Label: "docker", Quiet: true,
 		})
 	}
-	state, err := procstream.Output(ctx, log, procstream.Command{
-		Name: bin, Args: []string{"inspect", "--format", "{{.State.Running}}", cfg.String("container")},
-		Env: env(cfg), Label: "docker", Quiet: true,
+	state, err := r.Output(ctx, remoteexec.Command{
+		Argv: []string{bin, "inspect", "--format", "{{.State.Running}}", cfg.String("container")},
+		Env:  env(cfg), Label: "docker", Quiet: true,
 	})
 	if err != nil {
 		return err
@@ -150,45 +156,42 @@ func (d *Driver) Backup(ctx context.Context, cfg core.Config, log *slog.Logger) 
 	if err := d.Validate(cfg); err != nil {
 		return nil, err
 	}
-	bin, err := procstream.Lookup(cfg.String("binary_path"), "docker", "podman")
+	r, err := remoteexec.Open(ctx, cfg, log)
 	if err != nil {
 		return nil, err
 	}
-	var args []string
+	bin, err := r.Tool(ctx, cfg.String("binary_path"), "docker", "podman")
+	if err != nil {
+		r.Close()
+		return nil, err
+	}
 	ext := "tar"
 	meta := map[string]string{}
+	if r.Remote() {
+		meta["host"] = r.HostLabel()
+	}
 	if cfg.StringOr("mode", "volume") == "volume" {
-		vol := cfg.String("volume")
-		args = []string{"run", "--rm", "--network", "none", "-v", vol + ":/data:ro",
-			cfg.StringOr("image", defaultImage), "tar", "-C", "/data", "-cf", "-", "."}
-		meta["volume"] = vol
-		log.Info("archiving docker volume", "volume", vol, "image", cfg.StringOr("image", defaultImage))
+		meta["volume"] = cfg.String("volume")
+		log.Info("archiving docker volume", "volume", cfg.String("volume"),
+			"image", cfg.StringOr("image", defaultImage), "where", where(r))
 	} else {
 		ext = strings.TrimPrefix(cfg.StringOr("extension", "tar"), ".")
-		args = []string{"exec"}
-		if u := cfg.String("exec_user"); u != "" {
-			args = append(args, "--user", u)
-		}
-		args = append(args, cfg.String("container"), cfg.StringOr("shell", "/bin/sh"), "-c", cfg.String("command"))
 		meta["container"] = cfg.String("container")
-		log.Info("running command in container", "container", cfg.String("container"))
+		log.Info("running command in container", "container", cfg.String("container"), "where", where(r))
 	}
-	p, err := procstream.Start(ctx, log, procstream.Command{
-		Name: bin, Args: args, Env: env(cfg), Label: "docker",
+	reader, err := r.Start(ctx, remoteexec.Command{
+		Argv: backupArgv(bin, cfg), Env: env(cfg), Label: "docker",
 	})
 	if err != nil {
+		r.Close()
 		return nil, err
 	}
-	return &source.Stream{Reader: p, Extension: ext, Meta: meta}, nil
+	return &source.Stream{Reader: reader, Extension: ext, Meta: meta}, nil
 }
 
-func (d *Driver) Restore(ctx context.Context, cfg core.Config, r io.Reader, opts source.RestoreOptions, log *slog.Logger) error {
+func (d *Driver) Restore(ctx context.Context, cfg core.Config, src io.Reader, opts source.RestoreOptions, log *slog.Logger) error {
 	if cfg.StringOr("mode", "volume") != "volume" {
 		return fmt.Errorf("restore is only supported for docker volumes, not for exec sources")
-	}
-	bin, err := procstream.Lookup(cfg.String("binary_path"), "docker", "podman")
-	if err != nil {
-		return err
 	}
 	vol := cfg.String("volume")
 	if opts.Params != nil && opts.Params.Has("volume") {
@@ -197,17 +200,50 @@ func (d *Driver) Restore(ctx context.Context, cfg core.Config, r io.Reader, opts
 	if vol == "" {
 		return fmt.Errorf("no target volume for the restore")
 	}
-	script := "tar -C /data -xf -"
+	r, err := remoteexec.Open(ctx, cfg, log)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	bin, err := r.Tool(ctx, cfg.String("binary_path"), "docker", "podman")
+	if err != nil {
+		return err
+	}
 	if opts.Overwrite {
-		script = "rm -rf /data/..?* /data/.[!.]* /data/* 2>/dev/null; " + script
 		log.Info("clearing docker volume before restore", "volume", vol)
 	}
-	args := []string{"run", "--rm", "-i", "--network", "none", "-v", vol + ":/data",
-		cfg.StringOr("image", defaultImage), "/bin/sh", "-c", script}
-	log.Info("restoring docker volume", "volume", vol)
-	return procstream.Run(ctx, log, procstream.Command{
-		Name: bin, Args: args, Env: env(cfg), Stdin: r, Label: "docker",
+	log.Info("restoring docker volume", "volume", vol, "where", where(r))
+	return r.Run(ctx, remoteexec.Command{
+		Argv: restoreArgv(bin, vol, opts.Overwrite, cfg), Env: env(cfg), Stdin: src, Label: "docker",
 	})
+}
+
+func backupArgv(bin string, cfg core.Config) []string {
+	if cfg.StringOr("mode", "volume") == "volume" {
+		return []string{bin, "run", "--rm", "--network", "none", "-v", cfg.String("volume") + ":/data:ro",
+			cfg.StringOr("image", defaultImage), "tar", "-C", "/data", "-cf", "-", "."}
+	}
+	argv := []string{bin, "exec"}
+	if u := cfg.String("exec_user"); u != "" {
+		argv = append(argv, "--user", u)
+	}
+	return append(argv, cfg.String("container"), cfg.StringOr("shell", "/bin/sh"), "-c", cfg.String("command"))
+}
+
+func restoreArgv(bin, vol string, overwrite bool, cfg core.Config) []string {
+	script := "tar -C /data -xf -"
+	if overwrite {
+		script = "rm -rf /data/..?* /data/.[!.]* /data/* 2>/dev/null; " + script
+	}
+	return []string{bin, "run", "--rm", "-i", "--network", "none", "-v", vol + ":/data",
+		cfg.StringOr("image", defaultImage), "/bin/sh", "-c", script}
+}
+
+func where(r *remoteexec.Runner) string {
+	if r.Remote() {
+		return "host " + r.HostLabel()
+	}
+	return "this server"
 }
 
 func env(cfg core.Config) []string {

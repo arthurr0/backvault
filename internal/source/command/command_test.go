@@ -11,6 +11,7 @@ import (
 
 	"github.com/arthurr0/backvault/internal/core"
 	"github.com/arthurr0/backvault/internal/source"
+	"github.com/arthurr0/backvault/internal/source/internal/remoteexec"
 )
 
 func testLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
@@ -146,5 +147,33 @@ func TestRestoreCommandReceivesStdin(t *testing.T) {
 	}
 	if string(got) != "payload" {
 		t.Errorf("restored content %q", got)
+	}
+}
+
+func TestRemoteShellLine(t *testing.T) {
+	cfg := core.Config{
+		"command":     "pg_dump -Fc app",
+		"env":         []string{"PGPASSWORD=hunter2hunter2"},
+		"working_dir": "/var/lib/my app",
+		"shell":       "/bin/bash",
+	}
+	cmd := shellCommand("/bin/bash", cfg.String("command"), cfg, "command")
+	line := remoteexec.ShellLine(cmd)
+	want := `cd '/var/lib/my app' && env PGPASSWORD=hunter2hunter2 /bin/bash -c 'pg_dump -Fc app'`
+	if line != want {
+		t.Errorf("got %q, want %q", line, want)
+	}
+	if logged := remoteexec.LogLine(cmd); strings.Contains(logged, "hunter2hunter2") {
+		t.Errorf("the environment value leaked into the log line: %s", logged)
+	}
+}
+
+func TestRemoteValidateSkipsTheLocalWorkingDirectory(t *testing.T) {
+	cfg := core.Config{"command": "true", "working_dir": "/definitely/not/here"}
+	if err := New().Validate(cfg); err == nil {
+		t.Error("a missing local working directory should be rejected")
+	}
+	if err := New().Validate(cfg.WithHost(&core.Host{Name: "web01"})); err != nil {
+		t.Errorf("a working directory on a host must not be checked locally: %v", err)
 	}
 }

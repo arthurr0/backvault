@@ -10,8 +10,10 @@ import (
 	"strings"
 
 	"github.com/arthurr0/backvault/internal/core"
+	"github.com/arthurr0/backvault/internal/remote"
 	"github.com/arthurr0/backvault/internal/source"
 	"github.com/arthurr0/backvault/internal/source/internal/procstream"
+	"github.com/arthurr0/backvault/internal/source/internal/remoteexec"
 )
 
 type Driver struct{}
@@ -31,6 +33,7 @@ func (d *Driver) Spec() core.DriverSpec {
 		Capabilities: []string{
 			core.CapTest,
 			core.CapRestore,
+			core.CapRemote,
 		},
 		Fields: []core.Field{
 			{
@@ -109,33 +112,26 @@ func (d *Driver) Validate(cfg core.Config) error {
 }
 
 func (d *Driver) Test(ctx context.Context, cfg core.Config, log *slog.Logger) error {
-	bin, err := procstream.Lookup(cfg.String("binary_path"), "mysql", "mariadb")
+	r, err := remoteexec.Open(ctx, cfg, log)
 	if err != nil {
 		return err
 	}
-	defaults, cleanup, err := defaultsFile(cfg)
+	defer r.Close()
+	bin, err := r.Tool(ctx, cfg.String("binary_path"), "mysql", "mariadb")
 	if err != nil {
 		return err
 	}
-	args := []string{"--defaults-extra-file=" + defaults, "--batch", "--skip-column-names", "-e", "select 1"}
-	return procstream.Run(ctx, log, procstream.Command{
-		Name: bin, Args: args, Redact: redact(cfg), Label: "mysql", Cleanup: []func(){cleanup},
-	})
+	cmd, err := clientCommand(r, bin, []string{"--batch", "--skip-column-names", "-e", "select 1"}, cfg)
+	if err != nil {
+		return err
+	}
+	cmd.Redact = redact(cfg)
+	cmd.Label = "mysql"
+	return r.Run(ctx, cmd)
 }
 
-func (d *Driver) Backup(ctx context.Context, cfg core.Config, log *slog.Logger) (*source.Stream, error) {
-	if err := d.Validate(cfg); err != nil {
-		return nil, err
-	}
-	bin, err := procstream.Lookup(cfg.String("binary_path"), "mysqldump", "mariadb-dump")
-	if err != nil {
-		return nil, err
-	}
-	defaults, cleanup, err := defaultsFile(cfg)
-	if err != nil {
-		return nil, err
-	}
-	args := []string{"--defaults-extra-file=" + defaults}
+func dumpArgs(cfg core.Config) []string {
+	var args []string
 	if cfg.Bool("single_transaction", true) {
 		args = append(args, "--single-transaction")
 	}
@@ -162,15 +158,37 @@ func (d *Driver) Backup(ctx context.Context, cfg core.Config, log *slog.Logger) 
 		args = append(args, "--databases")
 		args = append(args, dbs...)
 	}
-	log.Info("dumping mysql", "host", cfg.String("host"), "databases", scope(cfg), "tool", bin)
-	p, err := procstream.Start(ctx, log, procstream.Command{
-		Name: bin, Args: args, Redact: redact(cfg), Label: "mysqldump", Cleanup: []func(){cleanup},
-	})
+	return args
+}
+
+func (d *Driver) Backup(ctx context.Context, cfg core.Config, log *slog.Logger) (*source.Stream, error) {
+	if err := d.Validate(cfg); err != nil {
+		return nil, err
+	}
+	r, err := remoteexec.Open(ctx, cfg, log)
 	if err != nil {
 		return nil, err
 	}
+	bin, err := r.Tool(ctx, cfg.String("binary_path"), "mysqldump", "mariadb-dump")
+	if err != nil {
+		r.Close()
+		return nil, err
+	}
+	cmd, err := clientCommand(r, bin, dumpArgs(cfg), cfg)
+	if err != nil {
+		r.Close()
+		return nil, err
+	}
+	cmd.Redact = redact(cfg)
+	cmd.Label = "mysqldump"
+	log.Info("dumping mysql", "host", cfg.String("host"), "databases", scope(cfg), "tool", bin, "where", where(r))
+	reader, err := r.Start(ctx, cmd)
+	if err != nil {
+		r.Close()
+		return nil, err
+	}
 	return &source.Stream{
-		Reader:    p,
+		Reader:    reader,
 		Extension: "sql",
 		Meta: map[string]string{
 			"host":      cfg.String("host"),
@@ -179,8 +197,13 @@ func (d *Driver) Backup(ctx context.Context, cfg core.Config, log *slog.Logger) 
 	}, nil
 }
 
-func (d *Driver) Restore(ctx context.Context, cfg core.Config, r io.Reader, opts source.RestoreOptions, log *slog.Logger) error {
-	bin, err := procstream.Lookup(cfg.String("binary_path"), "mysql", "mariadb")
+func (d *Driver) Restore(ctx context.Context, cfg core.Config, src io.Reader, opts source.RestoreOptions, log *slog.Logger) error {
+	r, err := remoteexec.Open(ctx, cfg, log)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	bin, err := r.Tool(ctx, cfg.String("binary_path"), "mysql", "mariadb")
 	if err != nil {
 		return err
 	}
@@ -188,27 +211,55 @@ func (d *Driver) Restore(ctx context.Context, cfg core.Config, r io.Reader, opts
 	if params == nil {
 		params = core.Config{}
 	}
-	defaults, cleanup, err := defaultsFile(cfg)
-	if err != nil {
-		return err
-	}
-	args := []string{"--defaults-extra-file=" + defaults}
 	target := params.String("database")
 	if target == "" && !cfg.Bool("all_databases", false) {
 		if dbs := cfg.StringList("databases"); len(dbs) == 1 {
 			target = dbs[0]
 		}
 	}
+	var args []string
 	if target != "" {
 		args = append(args, target)
 	}
-	log.Info("restoring mysql dump", "database", targetLabel(target), "tool", "mysql")
-	return procstream.Run(ctx, log, procstream.Command{
-		Name: bin, Args: args, Stdin: r, Redact: redact(cfg), Label: "mysql", Cleanup: []func(){cleanup},
-	})
+	cmd, err := clientCommand(r, bin, args, cfg)
+	if err != nil {
+		return err
+	}
+	cmd.Stdin = src
+	cmd.Redact = redact(cfg)
+	cmd.Label = "mysql"
+	log.Info("restoring mysql dump", "database", targetLabel(target), "tool", "mysql", "where", where(r))
+	return r.Run(ctx, cmd)
 }
 
-func defaultsFile(cfg core.Config) (string, func(), error) {
+func clientCommand(r *remoteexec.Runner, bin string, args []string, cfg core.Config) (remoteexec.Command, error) {
+	if r.Remote() {
+		return remoteexec.Command{Script: remoteDefaultsScript(bin, args, defaultsContent(cfg))}, nil
+	}
+	defaults, cleanup, err := defaultsFile(cfg)
+	if err != nil {
+		return remoteexec.Command{}, err
+	}
+	argv := append([]string{bin, "--defaults-extra-file=" + defaults}, args...)
+	return remoteexec.Command{Argv: argv, Cleanup: []func(){cleanup}}, nil
+}
+
+func remoteDefaultsScript(bin string, args []string, content string) string {
+	inner := remote.ShellQuote(bin) + ` --defaults-extra-file="$f"`
+	if len(args) > 0 {
+		inner += " " + remote.ShellJoin(args)
+	}
+	return remoteexec.TempFileScript(content, inner)
+}
+
+func where(r *remoteexec.Runner) string {
+	if r.Remote() {
+		return "host " + r.HostLabel()
+	}
+	return "this server"
+}
+
+func defaultsContent(cfg core.Config) string {
 	var b strings.Builder
 	b.WriteString("[client]\n")
 	if socket := cfg.String("socket"); socket != "" {
@@ -224,7 +275,11 @@ func defaultsFile(cfg core.Config) (string, func(), error) {
 	if pw := cfg.String("password"); pw != "" {
 		b.WriteString("password=\"" + strings.NewReplacer("\\", "\\\\", "\"", "\\\"").Replace(pw) + "\"\n")
 	}
-	path, err := procstream.WriteTempFile("", "backvault-mysql-*.cnf", 0o600, []byte(b.String()))
+	return b.String()
+}
+
+func defaultsFile(cfg core.Config) (string, func(), error) {
+	path, err := procstream.WriteTempFile("", "backvault-mysql-*.cnf", 0o600, []byte(defaultsContent(cfg)))
 	if err != nil {
 		return "", nil, fmt.Errorf("write mysql defaults file: %w", err)
 	}

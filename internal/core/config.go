@@ -181,8 +181,12 @@ func (c Config) MergeSecrets(previous Config, secretFields []string) Config {
 
 func ValidateRequired(spec DriverSpec, cfg Config) error {
 	var missing []string
+	remote := cfg.Host() != nil
 	for _, f := range spec.Fields {
 		if !f.Required {
+			continue
+		}
+		if remote && f.LocalOnly {
 			continue
 		}
 		if !showIfMatches(f.ShowIf, cfg) {

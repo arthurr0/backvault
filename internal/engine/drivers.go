@@ -66,7 +66,7 @@ type TestResult struct {
 	DurationMS int64  `json:"durationMs"`
 }
 
-func (e *Engine) TestSourceConfig(ctx context.Context, kind string, cfg core.Config, log *slog.Logger) TestResult {
+func (e *Engine) TestSourceConfig(ctx context.Context, kind string, cfg core.Config, hostID string, log *slog.Logger) TestResult {
 	driver, ok := source.Get(kind)
 	if !ok {
 		return TestResult{Message: fmt.Sprintf("unknown source driver %q", kind)}
@@ -78,9 +78,17 @@ func (e *Engine) TestSourceConfig(ctx context.Context, kind string, cfg core.Con
 	if err := driver.Validate(plain); err != nil {
 		return TestResult{Message: err.Error()}
 	}
+	plain, err = e.attachHost(ctx, driver.Spec(), hostID, plain)
+	if err != nil {
+		return TestResult{Message: err.Error()}
+	}
 	return timedTest(ctx, log, func(c context.Context, l *slog.Logger) error {
 		return driver.Test(c, plain, l)
 	})
+}
+
+func (e *Engine) TestSource(ctx context.Context, src core.Source, log *slog.Logger) TestResult {
+	return e.TestSourceConfig(ctx, src.Kind, src.Config, src.HostID, log)
 }
 
 func (e *Engine) TestDestinationConfig(ctx context.Context, kind string, cfg core.Config, log *slog.Logger) TestResult {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -13,11 +14,28 @@ import (
 	"github.com/arthurr0/backvault/internal/store"
 )
 
+type exportHost struct {
+	Name                  string        `yaml:"name" json:"name"`
+	Description           string        `yaml:"description,omitempty" json:"description,omitempty"`
+	Address               string        `yaml:"address" json:"address"`
+	Port                  int           `yaml:"port,omitempty" json:"port,omitempty"`
+	User                  string        `yaml:"user" json:"user"`
+	Auth                  core.HostAuth `yaml:"auth,omitempty" json:"auth,omitempty"`
+	PrivateKey            string        `yaml:"privateKey,omitempty" json:"privateKey,omitempty"`
+	KeyPassphrase         string        `yaml:"keyPassphrase,omitempty" json:"keyPassphrase,omitempty"`
+	Password              string        `yaml:"password,omitempty" json:"password,omitempty"`
+	HostKey               string        `yaml:"hostKey,omitempty" json:"hostKey,omitempty"`
+	Sudo                  bool          `yaml:"sudo,omitempty" json:"sudo,omitempty"`
+	ConnectTimeoutSeconds int           `yaml:"connectTimeoutSeconds,omitempty" json:"connectTimeoutSeconds,omitempty"`
+	Tags                  []string      `yaml:"tags,omitempty" json:"tags,omitempty"`
+}
+
 type exportSource struct {
 	Name        string         `yaml:"name" json:"name"`
 	Kind        string         `yaml:"kind" json:"kind"`
 	Description string         `yaml:"description,omitempty" json:"description,omitempty"`
 	Config      map[string]any `yaml:"config" json:"config"`
+	Host        string         `yaml:"host,omitempty" json:"host,omitempty"`
 	Tags        []string       `yaml:"tags,omitempty" json:"tags,omitempty"`
 }
 
@@ -66,6 +84,7 @@ type exportChannel struct {
 type exportDocument struct {
 	Version      int                 `yaml:"version" json:"version"`
 	ExportedAt   time.Time           `yaml:"exportedAt" json:"exportedAt"`
+	Hosts        []exportHost        `yaml:"hosts" json:"hosts"`
 	Sources      []exportSource      `yaml:"sources" json:"sources"`
 	Destinations []exportDestination `yaml:"destinations" json:"destinations"`
 	Jobs         []exportJob         `yaml:"jobs" json:"jobs"`
@@ -91,6 +110,24 @@ func (s *Server) buildExport(r *http.Request, includeSecrets bool) (exportDocume
 	ctx := r.Context()
 	doc := exportDocument{Version: 1, ExportedAt: time.Now().UTC()}
 
+	hosts, _, err := s.store.Hosts.List(ctx, store.HostFilter{Page: store.Page{Limit: store.MaxLimit}})
+	if err != nil {
+		return doc, err
+	}
+	for _, h := range hosts {
+		if includeSecrets {
+			h = s.secrets.DecryptHostLenient(h)
+		} else {
+			h = h.Masked()
+		}
+		doc.Hosts = append(doc.Hosts, exportHost{
+			Name: h.Name, Description: h.Description, Address: h.Address, Port: h.Port,
+			User: h.User, Auth: h.Auth, PrivateKey: h.PrivateKey, KeyPassphrase: h.KeyPassphrase,
+			Password: h.Password, HostKey: h.HostKey, Sudo: h.Sudo,
+			ConnectTimeoutSeconds: h.ConnectTimeout, Tags: h.Tags,
+		})
+	}
+
 	sources, _, err := s.store.Sources.List(ctx, store.SourceFilter{Page: store.Page{Limit: store.MaxLimit}})
 	if err != nil {
 		return doc, err
@@ -106,7 +143,7 @@ func (s *Server) buildExport(r *http.Request, includeSecrets bool) (exportDocume
 		} else {
 			cfg = maskSource(src).Config
 		}
-		doc.Sources = append(doc.Sources, exportSource{Name: src.Name, Kind: src.Kind, Description: src.Description, Config: toMap(cfg), Tags: src.Tags})
+		doc.Sources = append(doc.Sources, exportSource{Name: src.Name, Kind: src.Kind, Description: src.Description, Config: toMap(cfg), Host: src.HostName, Tags: src.Tags})
 	}
 
 	destinations, _, err := s.store.Destinations.List(ctx, store.DestinationFilter{Page: store.Page{Limit: store.MaxLimit}})
@@ -205,7 +242,7 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		action = "export.secrets"
 	}
 	s.audit(r, nil, action, "export", "", "", map[string]any{
-		"sources": len(doc.Sources), "destinations": len(doc.Destinations),
+		"hosts": len(doc.Hosts), "sources": len(doc.Sources), "destinations": len(doc.Destinations),
 		"jobs": len(doc.Jobs), "channels": len(doc.Channels),
 	})
 	w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
@@ -228,6 +265,72 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 	}
 	dryRun := queryBool(r, "dryRun")
 	changes := []importChange{}
+
+	hostIDs := map[string]string{}
+	existingHosts, _, err := s.store.Hosts.List(ctx, store.HostFilter{Page: store.Page{Limit: store.MaxLimit}})
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	for _, h := range existingHosts {
+		hostIDs[h.Name] = h.ID
+	}
+	for _, item := range doc.Hosts {
+		existingID, exists := hostIDs[item.Name]
+		var previous core.Host
+		if exists {
+			current, err := s.store.Hosts.Get(ctx, existingID)
+			if err != nil {
+				s.fail(w, r, err)
+				return
+			}
+			previous, err = s.secrets.DecryptHost(current)
+			if err != nil {
+				s.fail(w, r, err)
+				return
+			}
+		}
+		host := mergeHostSecrets(hostFromRequest(hostRequest{
+			Name: item.Name, Description: item.Description, Address: item.Address, Port: item.Port,
+			User: item.User, Auth: item.Auth, PrivateKey: item.PrivateKey, KeyPassphrase: item.KeyPassphrase,
+			Password: item.Password, HostKey: item.HostKey, Sudo: item.Sudo,
+			ConnectTimeoutSeconds: item.ConnectTimeoutSeconds, Tags: item.Tags,
+		}), previous)
+		host.ID = existingID
+		if err := validateHost(host); err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		host, err = derivePublicKey(host, previous.PublicKey)
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		action := "create"
+		if exists {
+			action = "update"
+		}
+		changes = append(changes, importChange{Kind: "host", Name: item.Name, Action: action})
+		if dryRun {
+			continue
+		}
+		stored, err := s.secrets.EncryptHost(host)
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		var saved core.Host
+		if exists {
+			saved, err = s.store.Hosts.Update(ctx, stored)
+		} else {
+			saved, err = s.store.Hosts.Create(ctx, stored)
+		}
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		hostIDs[item.Name] = saved.ID
+	}
 
 	sourceIDs := map[string]string{}
 	existingSources, _, err := s.store.Sources.List(ctx, store.SourceFilter{Page: store.Page{Limit: store.MaxLimit}})
@@ -259,15 +362,29 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 			s.fail(w, r, err)
 			return
 		}
+		hostID := ""
+		note := ""
+		if name := strings.TrimSpace(item.Host); name != "" {
+			id, ok := hostIDs[name]
+			if !ok {
+				note = "unknown host: " + name
+			} else {
+				if _, _, err := s.validateSourceHost(ctx, spec, id); err != nil {
+					s.fail(w, r, err)
+					return
+				}
+				hostID = id
+			}
+		}
 		action := "create"
 		if exists {
 			action = "update"
 		}
-		changes = append(changes, importChange{Kind: "source", Name: item.Name, Action: action})
+		changes = append(changes, importChange{Kind: "source", Name: item.Name, Action: action, Note: note})
 		if dryRun {
 			continue
 		}
-		record := core.Source{ID: existingID, Name: item.Name, Kind: item.Kind, Description: item.Description, Config: prepared.Encrypted, Tags: item.Tags}
+		record := core.Source{ID: existingID, Name: item.Name, Kind: item.Kind, Description: item.Description, Config: prepared.Encrypted, HostID: hostID, Tags: item.Tags}
 		var saved core.Source
 		if exists {
 			saved, err = s.store.Sources.Update(ctx, record)

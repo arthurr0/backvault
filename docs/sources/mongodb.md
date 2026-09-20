@@ -4,7 +4,7 @@ Dumps a MongoDB deployment with `mongodump --archive`, which produces a single s
 `mongorestore` reads back.
 
 Kind `mongodb`. Extension `archive`. Requires the MongoDB Database Tools (`mongodump`, and
-`mongorestore` for restores) on the Backvault host. Capabilities: test, restore.
+`mongorestore` for restores) on the Backvault host. Capabilities: test, restore, remote.
 
 ## Configuration fields
 
@@ -44,6 +44,19 @@ sources:
       extra_args:
         - --readPreference=secondaryPreferred
 ```
+
+## Run on a host
+
+Pick a host in the **Run on** select and `mongodump --uri=... --archive` runs on that machine,
+with `mongorestore` there for restores. The MongoDB Database Tools then have to be installed on
+the host rather than on the Backvault server.
+
+The URI is scrubbed from the run log, but `mongodump` only accepts it as an argument, so while
+the dump runs it is visible to anyone on the host who can list processes. Use a dedicated
+backup user in that URI, and consider a [`command`](command.md) source on the host when the
+process list is shared with people who should not see it.
+
+**Test connection** runs a tiny `mongodump` against `admin.system.version` on the host.
 
 ## Restore
 

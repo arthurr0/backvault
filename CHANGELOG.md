@@ -4,13 +4,63 @@ All notable changes to Backvault are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2026-09-20
+
+### Added
+
+- **Hosts**: a host is a reusable SSH connection (address, port, user, key or password
+  authentication, optional pinned host key fingerprint, optional sudo, connect timeout and
+  tags) that sources can run on. A **Hosts** page sits between Sources and Destinations in
+  the sidebar and lists every host with its address, auth method, the tools found on it, how
+  many sources use it and the outcome of its last test.
+- **Generated keys**: the host dialog generates an ed25519 key pair with one button, keeps
+  the private half encrypted with the master key and shows the public half with a copy button
+  and a ready-to-paste `authorized_keys` snippet. `POST /hosts/keygen` does the same for a
+  host that does not exist yet, and `POST /hosts/{id}/keygen` rotates the key of a stored one.
+- **Test connection**: testing a host reports the operating system it found and which of the
+  known tools are installed there, from the host dialog, the hosts table and the CLI. The
+  result is stored on the host.
+- **Host key pinning**: the first connection to a host with no pinned fingerprint is accepted
+  and the fingerprint is written to the log as a warning to paste into the **Host key
+  fingerprint** field. After that a changed host key fails the connection with
+  `host key mismatch` instead of being trusted.
+- **Run on a host**: sources for drivers that declare the `remote` capability gained a **Run
+  on** select (This server, or one of the hosts). `files` runs `tar -C <base> -cf -` there and
+  extracts with `tar -xf -` on restore, `docker` runs its `docker run` or `docker exec` there,
+  `command` and `ssh` run the command there, and `postgres`, `mysql`, `mongodb`, `redis` and
+  `sqlite` run their dump and restore tools there. Connection fields that only make sense
+  locally are hidden once a host is chosen.
+- **Sudo**: a host can wrap every command as `sudo -n -- sh -c '<cmd>'` for accounts that need
+  elevation to read the data.
+- **Secrets on the host stay off the command line**: database passwords travel in the
+  environment of the remote command or in a temporary file created with `umask 077` and
+  removed afterwards, and remote output is scrubbed of known secrets before it reaches the run
+  log.
+- **API**: `GET /hosts`, `POST /hosts`, `GET /hosts/{id}`, `PUT /hosts/{id}`,
+  `DELETE /hosts/{id}` (409 while sources reference the host), `POST /hosts/test`,
+  `POST /hosts/{id}/test`, `POST /hosts/keygen` and `POST /hosts/{id}/keygen`. Sources gained
+  `hostId`, the list carries `hostName` and accepts `?host=<id>`, and a `hostId` on a driver
+  without the `remote` capability is a `400` with `fields.hostId`.
+- **CLI**: `backvault hosts list`, `backvault hosts show <name-or-id>` and
+  `backvault hosts test <name-or-id>`, which exits non-zero when the host is not reachable.
+- **Export and import**: hosts are carried in the YAML export with their secrets masked unless
+  `--include-secrets`, and sources reference them by name with `host: <name>`.
 
 ### Changed
 
+- The run log prints every remote command exactly as it is sent, so a host with sudo turned on
+  now shows the `sudo -n -- sh -c '...'` wrapper instead of the bare command it wraps.
+- The restore dialog offers a **Target directory** (`files`) or **Target file** (`sqlite`) in
+  the "Restore into the source" mode. It was only reachable through the API before, so a
+  source restore of a file archive could only extract over the directory the source reads.
+- A generated public key keeps its `backvault@<site>` comment when the host is saved, so it
+  matches the line that was pasted into `authorized_keys`.
+- The **Run on** select shows the host port when it is not 22, like the hosts table.
 - `deploy/docker-compose.yml` mounts the host Docker socket and joins the host `docker` group
   through the `DOCKER_SOCKET` and `DOCKER_GID` variables (see `deploy/.env.example`), so the
   `docker` source driver works out of the box in compose deployments.
+- The API and CLI references document the host endpoints and the `hosts` command, and
+  `docs/hosts.md` gained screenshots of the hosts list and the host dialog.
 
 ## [0.2.0] - 2026-09-19
 

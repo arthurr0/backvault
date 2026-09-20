@@ -27,12 +27,18 @@ into it with a single bash script.
 | Live run log streamed over SSE | Restore to a path or back into the source |
 | ![Job editor](docs/images/job-editor.png) | ![Destinations](docs/images/destinations.png) |
 | The job editor with the schedule builder and packing | Destinations with usage per store |
+| ![Hosts](docs/images/hosts.png) | ![Host dialog](docs/images/host-dialog.png) |
+| SSH hosts with the tools found on each one | A generated key and its authorized_keys snippet |
 
 ## What it does
 
 - **Sources**: PostgreSQL, MySQL and MariaDB, MongoDB, Redis, SQLite, files and directories,
   a command over SSH, a Docker volume or a command inside a running container, any local
   command, and push jobs that receive artifacts from remote scripts.
+- **Hosts**: a reusable SSH connection with a key Backvault generates for you, host key
+  pinning and optional sudo. Point a source at a host and its `tar`, `pg_dump` or `sqlite3`
+  runs on that machine instead of the Backvault server, with only the finished stream
+  travelling back. Nothing is installed on the host.
 - **Destinations**: S3 compatible storage (AWS, MinIO, Backblaze B2, Wasabi, Cloudflare R2,
   Hetzner Object Storage), SFTP, WebDAV and local directories. A job can write to several at
   once.
@@ -191,6 +197,7 @@ The same scripts can skip Backvault entirely and upload straight to S3 or SFTP. 
 | [Concepts](docs/concepts.md) | Sources, destinations, jobs, runs, artifacts, stages |
 | [Configuration](docs/configuration.md) | Every environment variable and YAML key |
 | [Sources](docs/sources/README.md) | One page per source driver |
+| [Hosts](docs/hosts.md) | Running sources on other machines over SSH |
 | [Destinations](docs/destinations/README.md) | One page per destination, plus provider guides |
 | [Hetzner Storage Box](docs/destinations/hetzner-storage-box.md) | Sub accounts, port 23, keys, WebDAV |
 | [S3 providers](docs/destinations/s3-providers.md) | AWS, MinIO, B2, Wasabi, R2, Hetzner |

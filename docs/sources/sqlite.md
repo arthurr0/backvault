@@ -3,7 +3,7 @@
 Copies a SQLite database file consistently while the application keeps using it.
 
 Kind `sqlite`. Extension `sqlite`. Uses `sqlite3` when it is available, otherwise performs
-an online backup through the built-in driver. Capabilities: test, restore.
+an online backup through the built-in driver. Capabilities: test, restore, remote.
 
 ## Configuration fields
 
@@ -30,6 +30,27 @@ sources:
       path: /var/lib/app/app.db
       method: auto
 ```
+
+## Run on a host
+
+Pick a host in the **Run on** select and the copy is made on that machine, so `path` is the
+path to the database file there. This mode needs `sqlite3` on the host, because the built-in
+Go fallback can only open a local file:
+
+```
+umask 077; f=$(mktemp) || exit 1; sqlite3 '<path>' ".backup '$f'" && cat "$f"
+rc=$?; rm -f "$f"; exit $rc
+```
+
+The `vacuum` method runs `VACUUM INTO` through the same `sqlite3` binary instead, and `auto`
+behaves like `sqlite3`. When `sqlite3` is missing on the host the backup fails with a message
+saying so rather than falling back, since a plain copy of a live database is not a backup.
+Either install `sqlite3` there, or run the source on the Backvault server if the file is
+reachable from it.
+
+**Test connection** checks that the file is readable on the host and reads its schema with
+`sqlite3`. A restore writes the database to the target path on the host, replacing it only
+when overwrite is on, and removes any stale `-wal` and `-shm` files next to it.
 
 ## Restore
 

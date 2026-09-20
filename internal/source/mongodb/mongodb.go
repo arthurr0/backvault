@@ -10,7 +10,7 @@ import (
 
 	"github.com/arthurr0/backvault/internal/core"
 	"github.com/arthurr0/backvault/internal/source"
-	"github.com/arthurr0/backvault/internal/source/internal/procstream"
+	"github.com/arthurr0/backvault/internal/source/internal/remoteexec"
 )
 
 type Driver struct{}
@@ -30,6 +30,7 @@ func (d *Driver) Spec() core.DriverSpec {
 		Capabilities: []string{
 			core.CapTest,
 			core.CapRestore,
+			core.CapRemote,
 		},
 		Fields: []core.Field{
 			{
@@ -78,13 +79,18 @@ func (d *Driver) Validate(cfg core.Config) error {
 }
 
 func (d *Driver) Test(ctx context.Context, cfg core.Config, log *slog.Logger) error {
-	bin, err := procstream.Lookup(cfg.String("binary_path"), "mongodump")
+	r, err := remoteexec.Open(ctx, cfg, log)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	bin, err := r.Tool(ctx, cfg.String("binary_path"), "mongodump")
 	if err != nil {
 		return err
 	}
 	probe := func(args []string) error {
-		return procstream.Run(ctx, log, procstream.Command{
-			Name: bin, Args: args, Redact: redact(cfg), Label: "mongodump", Quiet: true,
+		return r.Run(ctx, remoteexec.Command{
+			Argv: append([]string{bin}, args...), Redact: redact(cfg), Label: "mongodump", Quiet: true,
 		})
 	}
 	base := []string{"--uri=" + cfg.String("uri"), "--archive=/dev/null", "--quiet"}
@@ -100,14 +106,7 @@ func (d *Driver) Test(ctx context.Context, cfg core.Config, log *slog.Logger) er
 	return err
 }
 
-func (d *Driver) Backup(ctx context.Context, cfg core.Config, log *slog.Logger) (*source.Stream, error) {
-	if err := d.Validate(cfg); err != nil {
-		return nil, err
-	}
-	bin, err := procstream.Lookup(cfg.String("binary_path"), "mongodump")
-	if err != nil {
-		return nil, err
-	}
+func dumpArgs(cfg core.Config) []string {
 	args := []string{"--uri=" + cfg.String("uri"), "--archive"}
 	if db := cfg.String("database"); db != "" {
 		args = append(args, "--db="+db)
@@ -115,23 +114,44 @@ func (d *Driver) Backup(ctx context.Context, cfg core.Config, log *slog.Logger) 
 			args = append(args, "--collection="+coll)
 		}
 	}
-	args = append(args, cfg.StringList("extra_args")...)
-	log.Info("dumping mongodb", "target", target(cfg))
-	p, err := procstream.Start(ctx, log, procstream.Command{
-		Name: bin, Args: args, Redact: redact(cfg), Label: "mongodump",
-	})
+	return append(args, cfg.StringList("extra_args")...)
+}
+
+func (d *Driver) Backup(ctx context.Context, cfg core.Config, log *slog.Logger) (*source.Stream, error) {
+	if err := d.Validate(cfg); err != nil {
+		return nil, err
+	}
+	r, err := remoteexec.Open(ctx, cfg, log)
 	if err != nil {
 		return nil, err
 	}
+	bin, err := r.Tool(ctx, cfg.String("binary_path"), "mongodump")
+	if err != nil {
+		r.Close()
+		return nil, err
+	}
+	log.Info("dumping mongodb", "target", target(cfg), "where", where(r))
+	reader, err := r.Start(ctx, remoteexec.Command{
+		Argv: append([]string{bin}, dumpArgs(cfg)...), Redact: redact(cfg), Label: "mongodump",
+	})
+	if err != nil {
+		r.Close()
+		return nil, err
+	}
 	return &source.Stream{
-		Reader:    p,
+		Reader:    reader,
 		Extension: "archive",
 		Meta:      map[string]string{"target": target(cfg)},
 	}, nil
 }
 
-func (d *Driver) Restore(ctx context.Context, cfg core.Config, r io.Reader, opts source.RestoreOptions, log *slog.Logger) error {
-	bin, err := procstream.Lookup(cfg.String("binary_path"), "mongorestore")
+func (d *Driver) Restore(ctx context.Context, cfg core.Config, src io.Reader, opts source.RestoreOptions, log *slog.Logger) error {
+	r, err := remoteexec.Open(ctx, cfg, log)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	bin, err := r.Tool(ctx, cfg.String("binary_path"), "mongorestore")
 	if err != nil {
 		return err
 	}
@@ -149,10 +169,17 @@ func (d *Driver) Restore(ctx context.Context, cfg core.Config, r io.Reader, opts
 	if from := params.String("rename_from"); from != "" && params.Has("rename_to") {
 		args = append(args, "--nsFrom="+from+".*", "--nsTo="+params.String("rename_to")+".*")
 	}
-	log.Info("restoring mongodb archive", "drop", params.Bool("drop", false))
-	return procstream.Run(ctx, log, procstream.Command{
-		Name: bin, Args: args, Stdin: r, Redact: redact(cfg), Label: "mongorestore",
+	log.Info("restoring mongodb archive", "drop", params.Bool("drop", false), "where", where(r))
+	return r.Run(ctx, remoteexec.Command{
+		Argv: append([]string{bin}, args...), Stdin: src, Redact: redact(cfg), Label: "mongorestore",
 	})
+}
+
+func where(r *remoteexec.Runner) string {
+	if r.Remote() {
+		return "host " + r.HostLabel()
+	}
+	return "this server"
 }
 
 func redact(cfg core.Config) []string {

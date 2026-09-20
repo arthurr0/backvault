@@ -12,6 +12,7 @@ import (
 
 	"github.com/arthurr0/backvault/internal/core"
 	"github.com/arthurr0/backvault/internal/source"
+	"github.com/arthurr0/backvault/internal/source/internal/remoteexec"
 
 	cryptossh "golang.org/x/crypto/ssh"
 )
@@ -34,44 +35,46 @@ func (d *Driver) Spec() core.DriverSpec {
 		Capabilities: []string{
 			core.CapTest,
 			core.CapRestore,
+			core.CapRemote,
 		},
 		Fields: []core.Field{
 			{
-				Name: "host", Label: "Host", Type: core.FieldString, Required: true,
+				Name: "host", Label: "Host", Type: core.FieldString, Required: true, LocalOnly: true,
 				Group: "Connection", Placeholder: "db01.example.com",
 			},
 			{
 				Name: "port", Label: "Port", Type: core.FieldPort, Default: 22, Group: "Connection",
+				LocalOnly: true,
 			},
 			{
 				Name: "user", Label: "User", Type: core.FieldString, Required: true, Default: "root",
-				Group: "Connection", Placeholder: "root",
+				Group: "Connection", Placeholder: "root", LocalOnly: true,
 			},
 			{
 				Name: "auth", Label: "Authentication", Type: core.FieldSelect, Default: "key",
-				Group: "Connection",
+				Group: "Connection", LocalOnly: true,
 				Options: []core.FieldOption{
 					{Value: "key", Label: "Private key"},
 					{Value: "password", Label: "Password"},
 				},
 			},
 			{
-				Name: "password", Label: "Password", Type: core.FieldSecret, Secret: true,
+				Name: "password", Label: "Password", Type: core.FieldSecret, Secret: true, LocalOnly: true,
 				Group: "Connection", ShowIf: map[string]any{"auth": "password"},
 			},
 			{
-				Name: "private_key", Label: "Private key", Type: core.FieldText, Secret: true,
+				Name: "private_key", Label: "Private key", Type: core.FieldText, Secret: true, LocalOnly: true,
 				Group: "Connection", ShowIf: map[string]any{"auth": "key"},
 				Placeholder: "-----BEGIN OPENSSH PRIVATE KEY-----",
 				Help:        "PEM text of the key. OpenSSH, RSA, ECDSA and Ed25519 keys are supported.",
 			},
 			{
-				Name: "key_passphrase", Label: "Key passphrase", Type: core.FieldSecret, Secret: true,
+				Name: "key_passphrase", Label: "Key passphrase", Type: core.FieldSecret, Secret: true, LocalOnly: true,
 				Group: "Connection", ShowIf: map[string]any{"auth": "key"},
 				Help: "Leave empty for an unencrypted key.",
 			},
 			{
-				Name: "host_key", Label: "Host key fingerprint", Type: core.FieldString,
+				Name: "host_key", Label: "Host key fingerprint", Type: core.FieldString, LocalOnly: true,
 				Group: "Connection", Advanced: true, Placeholder: "SHA256:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
 				Help: "Leave empty to trust the key on first use. The fingerprint is then written to the run log as a warning so you can pin it here.",
 			},
@@ -92,15 +95,21 @@ func (d *Driver) Spec() core.DriverSpec {
 			},
 			{
 				Name: "connect_timeout", Label: "Connect timeout (seconds)", Type: core.FieldInt, Default: 15,
-				Group: "Advanced", Advanced: true,
+				Group: "Advanced", Advanced: true, LocalOnly: true,
 			},
 		},
 	}
 }
 
 func (d *Driver) Validate(cfg core.Config) error {
-	if err := core.ValidateRequired(d.Spec(), cfg); err != nil {
+	if err := remoteexec.ValidateRequired(d.Spec(), cfg); err != nil {
 		return err
+	}
+	if cfg.Host() != nil {
+		if strings.TrimSpace(cfg.String("command")) == "" {
+			return fmt.Errorf("command is required")
+		}
+		return nil
 	}
 	switch cfg.StringOr("auth", "key") {
 	case "key":
@@ -123,6 +132,18 @@ func (d *Driver) Validate(cfg core.Config) error {
 func (d *Driver) Test(ctx context.Context, cfg core.Config, log *slog.Logger) error {
 	if err := d.Validate(cfg); err != nil {
 		return err
+	}
+	if cfg.Host() != nil {
+		r, err := remoteexec.Open(ctx, cfg, log)
+		if err != nil {
+			return err
+		}
+		defer r.Close()
+		if err := r.Check(ctx, remoteexec.Command{Script: "true", Label: "shell", Quiet: true}, "remote shell check"); err != nil {
+			return err
+		}
+		log.Info("host reachable", "host", r.HostLabel())
+		return nil
 	}
 	client, err := dial(cfg, log)
 	if err != nil {
@@ -158,6 +179,9 @@ func (d *Driver) Backup(ctx context.Context, cfg core.Config, log *slog.Logger) 
 	if command == "" {
 		return nil, fmt.Errorf("command is required")
 	}
+	if cfg.Host() != nil {
+		return backupOnHost(ctx, cfg, command, log)
+	}
 	st, err := startSession(ctx, cfg, command, nil, log)
 	if err != nil {
 		return nil, err
@@ -177,6 +201,9 @@ func (d *Driver) Restore(ctx context.Context, cfg core.Config, r io.Reader, opts
 	}
 	if command == "" {
 		return fmt.Errorf("this ssh source has no restore command configured")
+	}
+	if cfg.Host() != nil {
+		return restoreOnHost(ctx, cfg, command, r, log)
 	}
 	st, err := startSession(ctx, cfg, command, r, log)
 	if err != nil {

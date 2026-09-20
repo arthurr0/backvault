@@ -8,6 +8,7 @@ import {
   HardDrive,
   LayoutDashboard,
   ListChecks,
+  Server,
   Settings,
 } from 'lucide-react'
 import { Logo } from '@/components/Logo'
@@ -20,6 +21,7 @@ const NAV = [
   { to: '/runs', label: 'Runs', icon: Activity, end: false },
   { to: '/artifacts', label: 'Artifacts', icon: Archive, end: false },
   { to: '/sources', label: 'Sources', icon: Database, end: false },
+  { to: '/hosts', label: 'Hosts', icon: Server, end: false },
   { to: '/destinations', label: 'Destinations', icon: HardDrive, end: false },
   { to: '/notifications', label: 'Notifications', icon: Bell, end: false },
   { to: '/docs', label: 'Docs', icon: BookOpen, end: false },

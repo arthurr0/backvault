@@ -28,6 +28,7 @@ run on the server host with no environment at all still reaches a local instance
 | `backvault run` | `POST /jobs/{slug}/run`, then `GET /runs/{id}` while waiting |
 | `backvault jobs` | `GET /jobs`, `GET /jobs/{slug}`, `POST /jobs/{slug}/enable` and `/disable` |
 | `backvault runs` | `GET /runs`, `GET /runs/{id}/log`, `GET /runs/{id}` |
+| `backvault hosts` | `GET /hosts`, `GET /hosts/{id}`, `POST /hosts/{id}/test` |
 | `backvault restore` | `GET /artifacts/{id}/download` |
 | `backvault push` | `POST /ingest/{slug}` |
 | `backvault export` and `backvault import` | `GET /export`, `POST /import` |
@@ -203,6 +204,44 @@ backvault runs log 01JQ2K9F7A0000000000000100 --follow
 `--limit` defaults to 50. There is no `--kind` flag; filter by kind through the API if you need it.
 `--follow` re-reads `GET /runs/{id}/log` from the last byte offset once a second and stops when the
 run reaches a terminal status, so it works through proxies that do not like long lived connections.
+
+## backvault hosts
+
+```text
+backvault hosts list [--q TEXT]
+backvault hosts show <name-or-id>
+backvault hosts test <name-or-id>
+```
+
+```bash
+backvault hosts list
+backvault hosts test edge-01
+```
+
+`list` needs the `read` scope and prints one line per host with its address, user, auth method, how
+many sources run on it, the outcome of its last test and the tools that test found:
+
+```text
+NAME     ADDRESS          USER    AUTH  SOURCES  LAST TEST                TOOLS
+edge-01  10.0.0.12:22     backup  key   4        ok 2026-09-20T14:06:55Z  tar sqlite3 gzip sudo
+```
+
+`--q` filters by name, description or address. `show` prints one host as JSON with its secrets
+masked, and accepts a name as well as an id.
+
+`test` needs the `admin` scope, opens the connection now and records the result on the host:
+
+```text
+ok: true
+message: connection successful
+os: Linux 6.8.0-40-generic x86_64
+tools: tar sqlite3 gzip sudo
+duration: 71ms
+```
+
+An unreachable host prints the same block with `ok: false` and the reason in `message`, and exits
+non-zero, which makes it usable in a monitoring check. Creating and editing hosts is done in the
+panel or through the [API](api.md), because that is where key generation lives.
 
 ## backvault restore
 

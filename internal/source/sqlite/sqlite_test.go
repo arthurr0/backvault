@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/arthurr0/backvault/internal/core"
@@ -172,5 +173,30 @@ func TestRestoreRejectsNonSqliteStream(t *testing.T) {
 	}, testLogger())
 	if err == nil {
 		t.Fatal("a non-sqlite stream should be refused")
+	}
+}
+
+func TestRemoteCopyScript(t *testing.T) {
+	got := copyScript("sqlite3", "/var/lib/my app/app.db", "auto")
+	want := `umask 077; f=$(mktemp) || exit 1; sqlite3 '/var/lib/my app/app.db' ".backup '$f'" && cat "$f"; rc=$?; rm -f "$f"; exit $rc`
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	vacuum := copyScript("sqlite3", "/app.db", "vacuum")
+	if !strings.Contains(vacuum, `rm -f "$f"; sqlite3 /app.db "VACUUM INTO '$f'" && cat "$f"`) {
+		t.Errorf("got %q", vacuum)
+	}
+}
+
+func TestRemoteRestoreScript(t *testing.T) {
+	got := restoreScript("/var/lib/app/app.db")
+	for _, part := range []string{
+		"umask 077; mkdir -p /var/lib/app && f=$(mktemp /var/lib/app/.backvault-restore-XXXXXX) || exit 1;",
+		`cat > "$f" && chmod 644 "$f" && rm -f /var/lib/app/app.db-wal /var/lib/app/app.db-shm && mv "$f" /var/lib/app/app.db`,
+		`rc=$?; rm -f "$f"; exit $rc`,
+	} {
+		if !strings.Contains(got, part) {
+			t.Errorf("missing %q in %q", part, got)
+		}
 	}
 }

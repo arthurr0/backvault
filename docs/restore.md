@@ -207,8 +207,11 @@ that refuse to replace an existing target in other contexts will replace it here
 3. Leave the target as the job's own source, or pick another source of the same kind under
    **Target source**. The kinds must match: a `postgres` artifact can only go into a `postgres`
    source.
-4. Set the driver options the modal offers, for example clean and create for PostgreSQL.
-5. Confirm. This overwrites data on the target.
+4. For a `files` or `sqlite` artifact, set **Target directory** or **Target file**. Left empty
+   the restore writes over the `base_dir` or `path` the source reads. When the source runs on a
+   host the field names a path on that host, and the dialog says which one.
+5. Set the driver options the modal offers, for example clean and create for PostgreSQL.
+6. Confirm. This overwrites data on the target.
 
 ### From the API
 

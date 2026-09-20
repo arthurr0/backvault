@@ -21,6 +21,7 @@ version you are running.
 | Page | What it covers |
 |---|---|
 | [Configuration](configuration.md) | Every environment variable, YAML key and flag |
+| [Hosts](hosts.md) | Running sources on other machines over SSH |
 | [Retention](retention.md) | The keep policy with worked examples |
 | [Encryption](encryption.md) | age passphrases, and decrypting outside Backvault |
 | [Notifications](notifications.md) | Email, webhook, Slack, Discord, Telegram, ntfy |

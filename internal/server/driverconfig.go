@@ -16,6 +16,10 @@ type preparedConfig struct {
 }
 
 func (s *Server) prepareConfig(spec core.DriverSpec, incoming, previous core.Config, validate func(core.Config) error) (preparedConfig, error) {
+	return s.prepareConfigOnHost(spec, incoming, previous, nil, validate)
+}
+
+func (s *Server) prepareConfigOnHost(spec core.DriverSpec, incoming, previous core.Config, host *core.Host, validate func(core.Config) error) (preparedConfig, error) {
 	fields := spec.SecretFields()
 	if incoming == nil {
 		incoming = core.Config{}
@@ -25,11 +29,12 @@ func (s *Server) prepareConfig(spec core.DriverSpec, incoming, previous core.Con
 	if err != nil {
 		return preparedConfig{}, err
 	}
-	if err := core.ValidateRequired(spec, plain); err != nil {
+	checked := plain.WithHost(host)
+	if err := core.ValidateRequired(spec, checked); err != nil {
 		return preparedConfig{}, newValidationError(err.Error()).field("config", err.Error())
 	}
 	if validate != nil {
-		if err := validate(plain); err != nil {
+		if err := validate(checked); err != nil {
 			return preparedConfig{}, newValidationError(err.Error()).field("config", err.Error())
 		}
 	}

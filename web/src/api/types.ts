@@ -33,9 +33,10 @@ export interface Field {
   group?: string
   advanced?: boolean
   showIf?: Record<string, ConfigValue>
+  localOnly?: boolean
 }
 
-export type Capability = 'restore' | 'browse' | 'ingest' | 'test'
+export type Capability = 'restore' | 'browse' | 'ingest' | 'test' | 'remote'
 
 export interface DriverSpec {
   kind: string
@@ -68,6 +69,8 @@ export interface Source {
   kind: string
   description: string
   config: Config
+  hostId: string
+  hostName?: string
   tags: string[]
   createdAt: string
   updatedAt: string
@@ -92,6 +95,56 @@ export interface Destination {
   jobCount: number
   usedBytes: number
   artifactCount: number
+}
+
+export type HostAuth = 'key' | 'password'
+
+export interface Host {
+  id: string
+  name: string
+  description: string
+  address: string
+  port: number
+  user: string
+  auth: HostAuth
+  privateKey: string
+  keyPassphrase: string
+  password: string
+  publicKey: string
+  hostKey: string
+  sudo: boolean
+  connectTimeoutSeconds: number
+  tags: string[]
+  createdAt: string
+  updatedAt: string
+  lastTestAt?: string
+  lastTestOk?: boolean
+  lastTestError?: string
+  lastSeenOs?: string
+  tools?: string[]
+  sourceCount: number
+}
+
+export type HostInput = Omit<
+  Host,
+  | 'createdAt'
+  | 'updatedAt'
+  | 'lastTestAt'
+  | 'lastTestOk'
+  | 'lastTestError'
+  | 'lastSeenOs'
+  | 'tools'
+  | 'sourceCount'
+>
+
+export interface HostTestResult extends TestResult {
+  os?: string
+  tools?: string[]
+}
+
+export interface HostKeyPair {
+  privateKey: string
+  publicKey: string
 }
 
 export const ALL_EVENTS = [

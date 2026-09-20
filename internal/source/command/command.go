@@ -10,7 +10,7 @@ import (
 
 	"github.com/arthurr0/backvault/internal/core"
 	"github.com/arthurr0/backvault/internal/source"
-	"github.com/arthurr0/backvault/internal/source/internal/procstream"
+	"github.com/arthurr0/backvault/internal/source/internal/remoteexec"
 )
 
 type Driver struct{}
@@ -29,6 +29,7 @@ func (d *Driver) Spec() core.DriverSpec {
 		Capabilities: []string{
 			core.CapTest,
 			core.CapRestore,
+			core.CapRemote,
 		},
 		Fields: []core.Field{
 			{
@@ -78,7 +79,7 @@ func (d *Driver) Validate(cfg core.Config) error {
 			return fmt.Errorf("environment entries must look like KEY=VALUE")
 		}
 	}
-	if dir := cfg.String("working_dir"); dir != "" {
+	if dir := cfg.String("working_dir"); dir != "" && cfg.Host() == nil {
 		info, err := os.Stat(dir)
 		if err != nil {
 			return fmt.Errorf("working directory: %w", err)
@@ -94,46 +95,51 @@ func (d *Driver) Test(ctx context.Context, cfg core.Config, log *slog.Logger) er
 	if err := d.Validate(cfg); err != nil {
 		return err
 	}
+	r, err := remoteexec.Open(ctx, cfg, log)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
 	shell := cfg.StringOr("shell", "/bin/sh")
-	bin, err := procstream.Lookup("", shell)
+	bin, err := r.Tool(ctx, "", shell)
 	if err != nil {
 		return fmt.Errorf("shell %s is not available: %w", shell, err)
 	}
 	test := strings.TrimSpace(cfg.String("test_command"))
 	if test == "" {
-		log.Info("shell available", "shell", bin)
+		log.Info("shell available", "shell", bin, "where", where(r))
 		return nil
 	}
-	return procstream.Run(ctx, log, procstream.Command{
-		Name: bin, Args: []string{"-c", test}, Env: cfg.StringList("env"),
-		Dir: cfg.String("working_dir"), Redact: redact(cfg), Label: "shell",
-	})
+	return r.Run(ctx, shellCommand(bin, test, cfg, "shell"))
 }
 
 func (d *Driver) Backup(ctx context.Context, cfg core.Config, log *slog.Logger) (*source.Stream, error) {
 	if err := d.Validate(cfg); err != nil {
 		return nil, err
 	}
-	shell := cfg.StringOr("shell", "/bin/sh")
-	bin, err := procstream.Lookup("", shell)
-	if err != nil {
-		return nil, fmt.Errorf("shell %s is not available: %w", shell, err)
-	}
-	log.Info("running backup command", "shell", bin, "workingDir", cfg.String("working_dir"))
-	p, err := procstream.Start(ctx, log, procstream.Command{
-		Name: bin, Args: []string{"-c", cfg.String("command")}, Env: cfg.StringList("env"),
-		Dir: cfg.String("working_dir"), Redact: redact(cfg), Label: "command",
-	})
+	r, err := remoteexec.Open(ctx, cfg, log)
 	if err != nil {
 		return nil, err
 	}
+	shell := cfg.StringOr("shell", "/bin/sh")
+	bin, err := r.Tool(ctx, "", shell)
+	if err != nil {
+		r.Close()
+		return nil, fmt.Errorf("shell %s is not available: %w", shell, err)
+	}
+	log.Info("running backup command", "shell", bin, "workingDir", cfg.String("working_dir"), "where", where(r))
+	reader, err := r.Start(ctx, shellCommand(bin, cfg.String("command"), cfg, "command"))
+	if err != nil {
+		r.Close()
+		return nil, err
+	}
 	return &source.Stream{
-		Reader:    p,
+		Reader:    reader,
 		Extension: strings.TrimPrefix(cfg.StringOr("extension", "bin"), "."),
 	}, nil
 }
 
-func (d *Driver) Restore(ctx context.Context, cfg core.Config, r io.Reader, opts source.RestoreOptions, log *slog.Logger) error {
+func (d *Driver) Restore(ctx context.Context, cfg core.Config, src io.Reader, opts source.RestoreOptions, log *slog.Logger) error {
 	restore := strings.TrimSpace(cfg.String("restore_command"))
 	if opts.Params != nil && opts.Params.Has("restore_command") {
 		restore = strings.TrimSpace(opts.Params.String("restore_command"))
@@ -141,16 +147,34 @@ func (d *Driver) Restore(ctx context.Context, cfg core.Config, r io.Reader, opts
 	if restore == "" {
 		return fmt.Errorf("this command source has no restore command configured")
 	}
+	r, err := remoteexec.Open(ctx, cfg, log)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
 	shell := cfg.StringOr("shell", "/bin/sh")
-	bin, err := procstream.Lookup("", shell)
+	bin, err := r.Tool(ctx, "", shell)
 	if err != nil {
 		return fmt.Errorf("shell %s is not available: %w", shell, err)
 	}
-	log.Info("running restore command", "shell", bin)
-	return procstream.Run(ctx, log, procstream.Command{
-		Name: bin, Args: []string{"-c", restore}, Env: cfg.StringList("env"),
-		Dir: cfg.String("working_dir"), Stdin: r, Redact: redact(cfg), Label: "restore",
-	})
+	log.Info("running restore command", "shell", bin, "where", where(r))
+	cmd := shellCommand(bin, restore, cfg, "restore")
+	cmd.Stdin = src
+	return r.Run(ctx, cmd)
+}
+
+func shellCommand(bin, script string, cfg core.Config, label string) remoteexec.Command {
+	return remoteexec.Command{
+		Script: script, Shell: bin, Env: cfg.StringList("env"),
+		Dir: cfg.String("working_dir"), Redact: redact(cfg), Label: label,
+	}
+}
+
+func where(r *remoteexec.Runner) string {
+	if r.Remote() {
+		return "host " + r.HostLabel()
+	}
+	return "this server"
 }
 
 func redact(cfg core.Config) []string {

@@ -36,6 +36,7 @@ type Field struct {
 	Group       string         `json:"group,omitempty"`
 	Advanced    bool           `json:"advanced,omitempty"`
 	ShowIf      map[string]any `json:"showIf,omitempty"`
+	LocalOnly   bool           `json:"localOnly,omitempty"`
 }
 
 const (
@@ -111,6 +112,8 @@ type Source struct {
 	Kind          string     `json:"kind"`
 	Description   string     `json:"description"`
 	Config        Config     `json:"config"`
+	HostID        string     `json:"hostId"`
+	HostName      string     `json:"hostName,omitempty"`
 	Tags          []string   `json:"tags"`
 	CreatedAt     time.Time  `json:"createdAt"`
 	UpdatedAt     time.Time  `json:"updatedAt"`
@@ -441,4 +444,81 @@ type VersionInfo struct {
 	BuildDate string    `json:"buildDate"`
 	GoVersion string    `json:"goVersion"`
 	StartedAt time.Time `json:"startedAt"`
+}
+
+const CapRemote = "remote"
+
+const HostConfigKey = "_host"
+
+type HostAuth string
+
+const (
+	HostAuthKey      HostAuth = "key"
+	HostAuthPassword HostAuth = "password"
+)
+
+type Host struct {
+	ID             string     `json:"id"`
+	Name           string     `json:"name"`
+	Description    string     `json:"description"`
+	Address        string     `json:"address"`
+	Port           int        `json:"port"`
+	User           string     `json:"user"`
+	Auth           HostAuth   `json:"auth"`
+	PrivateKey     string     `json:"privateKey"`
+	KeyPassphrase  string     `json:"keyPassphrase"`
+	Password       string     `json:"password"`
+	PublicKey      string     `json:"publicKey"`
+	HostKey        string     `json:"hostKey"`
+	Sudo           bool       `json:"sudo"`
+	ConnectTimeout int        `json:"connectTimeoutSeconds"`
+	Tags           []string   `json:"tags"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	UpdatedAt      time.Time  `json:"updatedAt"`
+	LastTestAt     *time.Time `json:"lastTestAt,omitempty"`
+	LastTestOK     *bool      `json:"lastTestOk,omitempty"`
+	LastTestError  string     `json:"lastTestError,omitempty"`
+	LastSeenOS     string     `json:"lastSeenOs,omitempty"`
+	Tools          []string   `json:"tools,omitempty"`
+	SourceCount    int        `json:"sourceCount"`
+}
+
+var HostSecretFields = []string{"privateKey", "keyPassphrase", "password"}
+
+func (h Host) Masked() Host {
+	out := h
+	if out.PrivateKey != "" {
+		out.PrivateKey = SecretMask
+	}
+	if out.KeyPassphrase != "" {
+		out.KeyPassphrase = SecretMask
+	}
+	if out.Password != "" {
+		out.Password = SecretMask
+	}
+	return out
+}
+
+func (c Config) WithHost(h *Host) Config {
+	out := c.Clone()
+	if h == nil {
+		delete(out, HostConfigKey)
+		return out
+	}
+	out[HostConfigKey] = *h
+	return out
+}
+
+func (c Config) Host() *Host {
+	v, ok := c[HostConfigKey]
+	if !ok || v == nil {
+		return nil
+	}
+	switch t := v.(type) {
+	case Host:
+		return &t
+	case *Host:
+		return t
+	}
+	return nil
 }

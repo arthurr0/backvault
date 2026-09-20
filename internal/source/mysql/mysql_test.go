@@ -78,3 +78,34 @@ func TestScope(t *testing.T) {
 		t.Error("database list scope")
 	}
 }
+
+func TestRemoteDefaultsScript(t *testing.T) {
+	cfg := core.Config{
+		"host": "10.0.0.7", "port": 3307, "user": "backup", "password": "hunter2hunter2",
+		"databases": []string{"app production"},
+	}
+	script := remoteDefaultsScript("mysqldump", dumpArgs(cfg), defaultsContent(cfg))
+	if !strings.HasPrefix(script, "umask 077; f=$(mktemp) || exit 1; printf '%s' ") {
+		t.Errorf("the defaults file must be created with umask 077: %s", script)
+	}
+	if !strings.Contains(script, `mysqldump --defaults-extra-file="$f" --single-transaction --routines --triggers --events 'app production'`) {
+		t.Errorf("unexpected dump command: %s", script)
+	}
+	if !strings.HasSuffix(script, `; rc=$?; rm -f "$f"; exit $rc`) {
+		t.Errorf("the defaults file must be removed: %s", script)
+	}
+	argv := strings.Split(script, `mysqldump --defaults-extra-file="$f" `)[1]
+	if strings.Contains(argv, "hunter2hunter2") {
+		t.Error("the password must never appear in the arguments")
+	}
+	if !strings.Contains(defaultsContent(cfg), `password="hunter2hunter2"`) {
+		t.Error("the password belongs in the defaults file")
+	}
+}
+
+func TestRemoteDefaultsScriptWithoutArguments(t *testing.T) {
+	script := remoteDefaultsScript("mysql", nil, "[client]\n")
+	if !strings.Contains(script, `; mysql --defaults-extra-file="$f"; rc=$?;`) {
+		t.Errorf("got %s", script)
+	}
+}

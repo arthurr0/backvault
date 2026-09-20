@@ -4,7 +4,7 @@ Packs a list of paths into a tar archive. The archive is built in Go, so this dr
 no external tools and works the same on every host.
 
 Kind `files`. Extension `tar`. Requires nothing beyond read access to the paths.
-Capabilities: test, restore.
+Capabilities: test, restore, remote.
 
 ## Configuration fields
 
@@ -66,6 +66,36 @@ sources:
 That archive holds `www/index.html` rather than `srv/www/index.html`. A path outside
 `base_dir` is stored under its own base name instead, so keep the two consistent.
 
+
+## Run on a host
+
+Pick a host in the **Run on** select and the archive is built by `tar` on that machine and
+streamed back over SSH. The paths are read on the host, so `/srv/www` means the host's
+`/srv/www`. The command is:
+
+```
+tar -C <base_dir or /> -cf - [--one-file-system] [-h] --exclude=<pattern>... <paths>
+```
+
+Three differences from the Go-native local mode are worth knowing:
+
+- The host needs `tar`. Any reasonably complete GNU or BSD tar works.
+- Without a `base_dir` the archive is relative to `/`, so `/var/www/html` is stored as
+  `var/www/html`. Set `base_dir` when you want shorter entries, exactly as you would locally.
+- Exclude patterns are handed to `tar --exclude` unchanged, so they follow that tool's glob
+  rules rather than the Go matcher. `**/cache/**` and `*.log` behave the same way in both,
+  more exotic patterns may not.
+
+**Test connection** checks that `tar` exists on the host and that every configured path is
+readable there, and lists the ones that are not.
+
+GNU tar exits with a non-zero status when a file changes while it is being read, and the run
+then fails at the end of the dump with that message in the log. Exclude the paths that change
+constantly, or back them up with the driver that owns them.
+
+A restore into a host runs `mkdir -p <target> && tar -C <target> -xf -` on it, with
+`--no-same-owner` unless `restore_ownership` is on. The target directory is a path on the
+host, not on the Backvault server.
 
 ## Restore
 

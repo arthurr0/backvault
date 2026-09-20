@@ -5,7 +5,7 @@ command run inside a container that is already running.
 
 Kind `docker`. Extension `tar` for volumes, configurable in exec mode. Requires the
 `docker` client on the Backvault host and access to the Docker socket. Capabilities: test,
-restore for volumes.
+restore for volumes, remote.
 
 ## Configuration fields
 
@@ -70,6 +70,19 @@ sources:
       extension: dump
       exec_user: postgres
 ```
+
+## Run on a host
+
+Pick a host in the **Run on** select and the same commands run on that machine, against its
+Docker daemon: `docker run --rm -v <volume>:/data:ro <image> tar -C /data -cf - .` in volume
+mode, `docker exec ...` in exec mode, and the helper container with `-i` for a restore. The
+host needs `docker` or `podman` and an account allowed to talk to the socket, either through
+the `docker` group or through the host's sudo option.
+
+`binary_path` points at the binary on the host, so it is the place to select `podman` there,
+and `docker_host` sets `DOCKER_HOST` for the remote command. **Test connection** asks the
+host's daemon for its version and then checks that the volume or the running container exists
+on that machine.
 
 ## Restore
 

@@ -36,6 +36,7 @@ func (d *Driver) Spec() core.DriverSpec {
 		Capabilities: []string{
 			core.CapTest,
 			core.CapRestore,
+			core.CapRemote,
 		},
 		Fields: []core.Field{
 			{
@@ -105,6 +106,9 @@ func (d *Driver) Test(ctx context.Context, cfg core.Config, log *slog.Logger) er
 	if err := d.Validate(cfg); err != nil {
 		return err
 	}
+	if cfg.Host() != nil {
+		return d.testRemote(ctx, cfg, log)
+	}
 	var problems []string
 	var total int64
 	for _, p := range cfg.StringList("paths") {
@@ -152,6 +156,9 @@ func (d *Driver) Test(ctx context.Context, cfg core.Config, log *slog.Logger) er
 func (d *Driver) Backup(ctx context.Context, cfg core.Config, log *slog.Logger) (*source.Stream, error) {
 	if err := d.Validate(cfg); err != nil {
 		return nil, err
+	}
+	if cfg.Host() != nil {
+		return d.backupRemote(ctx, cfg, log)
 	}
 	w := &walker{
 		log:        log,

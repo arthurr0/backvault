@@ -10,6 +10,8 @@ export const qk = {
   dashboard: ['dashboard'] as const,
   sources: ['sources'] as const,
   source: (id: string) => ['sources', id] as const,
+  hosts: (filters?: Record<string, unknown>) => ['hosts', filters ?? {}] as const,
+  host: (id: string) => ['hosts', 'item', id] as const,
   destinations: ['destinations'] as const,
   destination: (id: string) => ['destinations', id] as const,
   destinationBrowse: (id: string, prefix: string) => ['destinations', id, 'browse', prefix] as const,

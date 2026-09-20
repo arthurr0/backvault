@@ -69,7 +69,7 @@ func TestDocsIndexCoversEveryPageInReadmeOrder(t *testing.T) {
 
 	wantOrder := []string{
 		"README.md", "introduction.md", "install.md", "first-backup.md", "concepts.md",
-		"configuration.md", "retention.md", "encryption.md", "notifications.md", "security.md",
+		"configuration.md", "hosts.md", "retention.md", "encryption.md", "notifications.md", "security.md",
 		"sources/README.md", "destinations/README.md",
 	}
 	for i, want := range wantOrder {

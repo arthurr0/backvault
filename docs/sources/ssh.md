@@ -5,7 +5,7 @@ This is the driver for machines Backvault can reach but should not install anyth
 
 Kind `ssh`. Extension configurable, `tar` by default. Requires nothing on the Backvault host,
 the SSH client is built in, so there is no `ssh` binary to install and no `binary_path`
-field. Capabilities: test, restore when `restore_command` is set.
+field. Capabilities: test, restore when `restore_command` is set, remote.
 
 ## Configuration fields
 
@@ -74,6 +74,19 @@ sources:
       command: tar --create --file - --directory /srv/uploads .
       extension: tar
 ```
+
+## Run on a host
+
+This driver has its own connection fields, which is what makes it useful on its own. When you
+pick a host in the **Run on** select instead, those fields are hidden and ignored: the host's
+address, user, key, host key pinning and sudo setting are used, and `command`, `extension` and
+`restore_command` keep working exactly as they do here. A source configured that way is the
+same thing as a [`command`](command.md) source on a host, so use whichever reads better in
+your list of sources.
+
+Hosts are the better choice when several sources point at the same machine: one key, one
+fingerprint to pin, one test button, and rotating the key touches one object instead of
+several sources.
 
 ## Restore
 

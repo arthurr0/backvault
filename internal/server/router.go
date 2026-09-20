@@ -54,6 +54,8 @@ func (s *Server) buildRouter() chi.Router {
 
 			r.Get("/sources", s.handleListSources)
 			r.Get("/sources/{id}", s.handleGetSource)
+			r.Get("/hosts", s.handleListHosts)
+			r.Get("/hosts/{id}", s.handleGetHost)
 			r.Get("/destinations", s.handleListDestinations)
 			r.Get("/destinations/{id}", s.handleGetDestination)
 			r.Get("/destinations/{id}/browse", s.handleBrowseDestination)
@@ -99,6 +101,14 @@ func (s *Server) buildRouter() chi.Router {
 			r.Delete("/sources/{id}", s.handleDeleteSource)
 			r.Post("/sources/test", s.handleTestSourceConfig)
 			r.Post("/sources/{id}/test", s.handleTestSource)
+
+			r.Post("/hosts", s.handleCreateHost)
+			r.Put("/hosts/{id}", s.handleUpdateHost)
+			r.Delete("/hosts/{id}", s.handleDeleteHost)
+			r.Post("/hosts/test", s.handleTestHostConfig)
+			r.Post("/hosts/{id}/test", s.handleTestHost)
+			r.Post("/hosts/keygen", s.handleKeygen)
+			r.Post("/hosts/{id}/keygen", s.handleHostKeygen)
 
 			r.Post("/destinations", s.handleCreateDestination)
 			r.Put("/destinations/{id}", s.handleUpdateDestination)

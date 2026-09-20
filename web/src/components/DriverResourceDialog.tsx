@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
-import { CircleCheck, CircleX, Plug } from 'lucide-react'
+import { Link } from 'react-router'
+import { CircleCheck, CircleX, Plug, Server } from 'lucide-react'
 import { errorMessage, fieldErrors } from '@/api/client'
 import {
+  useHosts,
   useSaveDestination,
   useSaveSource,
   useTestDestination,
@@ -14,9 +16,9 @@ import { TagInput } from '@/components/form/TagInput'
 import { Button } from '@/components/ui/Button'
 import { Dialog } from '@/components/ui/Dialog'
 import { FieldShell } from '@/components/ui/Field'
-import { Input, Textarea } from '@/components/ui/Input'
+import { Input, Select, Textarea } from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Toast'
-import { formatDuration } from '@/lib/format'
+import { formatDuration, hostAddress } from '@/lib/format'
 
 export type ResourceKind = 'source' | 'destination'
 
@@ -78,8 +80,18 @@ function ResourceForm({
   const [description, setDescription] = useState(record?.description ?? '')
   const [tags, setTags] = useState<string[]>(record?.tags ?? [])
   const [config, setConfig] = useState<Config>(() => initialConfig(specs, record))
+  const [hostId, setHostId] = useState(
+    kind === 'source' ? ((record as Source | null)?.hostId ?? '') : '',
+  )
 
+  const hosts = useHosts()
   const spec = useMemo(() => specs.find((item) => item.kind === driverKind), [specs, driverKind])
+  const remote = kind === 'source' && Boolean(spec?.capabilities?.includes('remote'))
+  const onHost = remote && hostId !== ''
+  const fields = useMemo(
+    () => (onHost ? (spec?.fields ?? []).filter((field) => !field.localOnly) : (spec?.fields ?? [])),
+    [spec, onHost],
+  )
 
   const pickDriver = (next: string) => {
     setDriverKind(next)
@@ -97,7 +109,8 @@ function ResourceForm({
       name: name.trim(),
       kind: spec.kind,
       description: description.trim(),
-      config: normalizeConfig(spec.fields, config),
+      config: normalizeConfig(fields, config),
+      ...(kind === 'source' ? { hostId: remote ? hostId : '' } : {}),
       tags,
     }
     const handlers = {
@@ -114,7 +127,12 @@ function ResourceForm({
   const runTest = () => {
     if (!spec) return
     test.mutate(
-      { id: record?.id, kind: spec.kind, config: normalizeConfig(spec.fields, config) },
+      {
+        id: record?.id,
+        kind: spec.kind,
+        config: normalizeConfig(fields, config),
+        ...(kind === 'source' ? { hostId: remote ? hostId : '' } : {}),
+      },
       {
         onError: (error) => toast.error('The test could not be run', errorMessage(error)),
       },
@@ -191,9 +209,48 @@ function ResourceForm({
               </FieldShell>
             </div>
 
+            {remote ? (
+              <div className="space-y-2 border-t border-border pt-4">
+                <FieldShell
+                  label="Run on"
+                  htmlFor="resource-host"
+                  help="Choose where this source is read from."
+                  error={errors.hostId}
+                >
+                  <Select
+                    id="resource-host"
+                    value={hostId}
+                    onChange={(event) => setHostId(event.target.value)}
+                  >
+                    <option value="">This server</option>
+                    {(hosts.data ?? []).map((host) => (
+                      <option key={host.id} value={host.id}>
+                        {host.name} ({hostAddress(host)})
+                      </option>
+                    ))}
+                  </Select>
+                </FieldShell>
+                {(hosts.data ?? []).length === 0 ? (
+                  <p className="text-xs text-muted">
+                    No hosts yet.{' '}
+                    <Link to="/hosts?new=1" className="text-accent hover:underline">
+                      Add an SSH host
+                    </Link>{' '}
+                    to run this source on another machine.
+                  </p>
+                ) : null}
+                {onHost ? (
+                  <p className="flex items-center gap-1.5 text-xs text-muted">
+                    <Server className="size-3.5 text-soft" aria-hidden="true" />
+                    Connection fields are taken from the host.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
             <div className="border-t border-border pt-4">
               <DynamicForm
-                fields={spec.fields}
+                fields={fields}
                 value={config}
                 onChange={setConfig}
                 errors={errors}
